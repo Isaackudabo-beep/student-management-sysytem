@@ -1,0 +1,17 @@
+# Purpose: Local PostgreSQL via Docker so you don't need a manual DB install.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: sms-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: sms_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - sms_pg_data:/var/lib/postgresql/data
+
+volumes:
+  sms_pg_data:
