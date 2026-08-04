@@ -35,6 +35,7 @@ async function main() {
     [
       { name: "JSS1A", level: "JSS1", arm: "A" },
       { name: "JSS2A", level: "JSS2", arm: "A" },
+      { name: "JSS3A", level: "JSS3", arm: "A" },
       { name: "SS1A", level: "SS1", arm: "A" },
       { name: "SS2B", level: "SS2", arm: "B" },
       { name: "SS3A", level: "SS3", arm: "A" },
@@ -62,29 +63,41 @@ async function main() {
     include: { teacher: true },
   });
 
-  const ss2Subjects = await Promise.all(
-    [
-      { code: "ENG2", title: "English Language", unit: 3, semester: 1, level: "SS2" },
-      { code: "MTH2", title: "Mathematics", unit: 3, semester: 1, level: "SS2" },
-      { code: "PHY2", title: "Physics", unit: 3, semester: 1, level: "SS2" },
-      { code: "CHM2", title: "Chemistry", unit: 3, semester: 1, level: "SS2" },
-      { code: "BIO2", title: "Biology", unit: 3, semester: 1, level: "SS2" },
-      { code: "CIV2", title: "Civic Education", unit: 2, semester: 1, level: "SS2" },
-      { code: "ECO2", title: "Economics", unit: 2, semester: 1, level: "SS2" },
-      { code: "ICT2", title: "Computer Studies", unit: 2, semester: 1, level: "SS2" },
-    ].map((s) => prisma.subject.create({ data: s }))
-  );
+  const jssCore = (level: string, tag: string) => [
+    { code: `ENG${tag}`, title: "English Language", unit: 3, semester: 1, level },
+    { code: `MTH${tag}`, title: "Mathematics", unit: 3, semester: 1, level },
+    { code: `BSC${tag}`, title: "Basic Science", unit: 3, semester: 1, level },
+    { code: `BST${tag}`, title: "Basic Technology", unit: 2, semester: 1, level },
+    { code: `CCA${tag}`, title: "Creative Arts", unit: 2, semester: 1, level },
+    { code: `PHE${tag}`, title: "Physical Education", unit: 2, semester: 1, level },
+  ];
 
-  await Promise.all(
-    [
-      { code: "ENG1", title: "English Language", unit: 3, semester: 1, level: "JSS1" },
-      { code: "MTH1", title: "Mathematics", unit: 3, semester: 1, level: "JSS1" },
-      { code: "BSC1", title: "Basic Science", unit: 3, semester: 1, level: "JSS1" },
-      { code: "BST1", title: "Basic Technology", unit: 2, semester: 1, level: "JSS1" },
-      { code: "CCA1", title: "Creative Arts", unit: 2, semester: 1, level: "JSS1" },
-      { code: "PHE1", title: "Physical Education", unit: 2, semester: 1, level: "JSS1" },
-    ].map((s) => prisma.subject.create({ data: s }))
-  );
+  const ssCore = (level: string, tag: string) => [
+    { code: `ENG${tag}`, title: "English Language", unit: 3, semester: 1, level },
+    { code: `MTH${tag}`, title: "Mathematics", unit: 3, semester: 1, level },
+    { code: `PHY${tag}`, title: "Physics", unit: 3, semester: 1, level },
+    { code: `CHM${tag}`, title: "Chemistry", unit: 3, semester: 1, level },
+    { code: `BIO${tag}`, title: "Biology", unit: 3, semester: 1, level },
+    { code: `CIV${tag}`, title: "Civic Education", unit: 2, semester: 1, level },
+    { code: `ECO${tag}`, title: "Economics", unit: 2, semester: 1, level },
+    { code: `ICT${tag}`, title: "Computer Studies", unit: 2, semester: 1, level },
+  ];
+
+  const allSubjectRows = [
+    ...jssCore("JSS1", "J1"),
+    ...jssCore("JSS2", "J2"),
+    ...jssCore("JSS3", "J3"),
+    ...ssCore("SS1", "S1"),
+    ...ssCore("SS2", "S2"),
+    ...ssCore("SS3", "S3"),
+  ];
+
+  const createdSubjects = [];
+  for (const row of allSubjectRows) {
+    createdSubjects.push(await prisma.subject.create({ data: row }));
+  }
+
+  const ss2Subjects = createdSubjects.filter((s) => s.level === "SS2");
 
   for (const subject of ss2Subjects.slice(0, 6)) {
     await prisma.teacherSubject.create({

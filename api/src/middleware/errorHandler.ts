@@ -20,10 +20,17 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   }
 
   if (err instanceof ZodError) {
+    const flat = err.flatten();
+    const failedFields = Object.keys(flat.fieldErrors).filter(
+      (key) => (flat.fieldErrors as Record<string, string[] | undefined>)[key]?.length
+    );
     return res.status(400).json({
       success: false,
-      message: "Validation failed",
-      details: err.flatten(),
+      message:
+        failedFields.length > 0
+          ? `Validation failed for: ${failedFields.join(", ")}`
+          : "Validation failed",
+      details: flat,
     });
   }
 

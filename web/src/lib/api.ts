@@ -18,6 +18,43 @@ export class ApiRequestError extends Error {
   }
 }
 
+type ZodFlattenDetails = {
+  formErrors?: string[];
+  fieldErrors?: Record<string, string[] | undefined>;
+};
+
+/** Turn API / Zod error payloads into a readable multi-line message naming each field. */
+export function formatApiError(err: unknown, fallback = "Request failed"): string {
+  if (!(err instanceof ApiRequestError)) {
+    return err instanceof Error ? err.message : fallback;
+  }
+
+  const details = err.details as ZodFlattenDetails | undefined;
+  const fieldErrors = details?.fieldErrors;
+  const lines: string[] = [];
+
+  if (fieldErrors && typeof fieldErrors === "object") {
+    for (const [field, messages] of Object.entries(fieldErrors)) {
+      if (!messages?.length) continue;
+      lines.push(`${field}: ${messages.join("; ")}`);
+    }
+  }
+
+  const formErrors = details?.formErrors?.filter(Boolean) ?? [];
+  for (const msg of formErrors) lines.push(msg);
+
+  if (lines.length > 0) {
+    const fields = Object.keys(fieldErrors ?? {}).filter((k) => (fieldErrors?.[k]?.length ?? 0) > 0);
+    const header =
+      fields.length > 0
+        ? `Validation failed (${fields.join(", ")})`
+        : err.message || "Validation failed";
+    return [header, ...lines].join("\n");
+  }
+
+  return err.message || fallback;
+}
+
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("sms_token");

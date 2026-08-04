@@ -43,7 +43,14 @@ export function RoleLoginForm({ role }: { role: Role }) {
       const user = await login(email, password, role);
       router.replace(user.mustChangePassword ? "/change-password" : dashboardPath(user.role));
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Login failed");
+      if (err instanceof ApiRequestError) {
+        setError(err.message);
+      } else if (err instanceof TypeError) {
+        // fetch() throws TypeError when the API is unreachable (offline / not started)
+        setError("Cannot reach the API. Make sure it is running on http://localhost:4000");
+      } else {
+        setError(err instanceof Error ? err.message : "Login failed");
+      }
     } finally {
       setSubmitting(false);
     }

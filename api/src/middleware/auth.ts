@@ -95,7 +95,12 @@ export function authorize(...roles: Role[]) {
       return next(new AppError(401, "Authentication required"));
     }
     if (!roles.includes(req.user.role)) {
-      return next(new AppError(403, "You do not have permission for this action"));
+      return next(
+        new AppError(
+          403,
+          `This action requires ${roles.join(" or ")} access (you are signed in as ${req.user.role}). Sign in through the Admin portal if you need to manage the school.`
+        )
+      );
     }
     next();
   };

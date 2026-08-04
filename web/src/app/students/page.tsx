@@ -4,7 +4,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button, Card, ErrorText, Input, Label, Select } from "@/components/ui";
-import { api, ApiRequestError } from "@/lib/api";
+import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { SchoolClass, Student, Subject } from "@/lib/types";
 
@@ -34,14 +34,21 @@ export default function StudentsPage() {
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [form, setForm] = useState(emptyForm);
 
   const selectedClass = useMemo(
-    () => classes.find((c) => c.id === form.classId),
+    () => classes.find((c) => c.id === form.classId) ?? null,
     [classes, form.classId]
   );
+
+  const canSubmit =
+    Boolean(form.classId) &&
+    selectedSubjects.length >= 5 &&
+    selectedSubjects.length <= 11 &&
+    !subjectsLoading;
 
   async function load(search = q, pageNum = page) {
     try {
@@ -52,7 +59,7 @@ export default function StudentsPage() {
       setPages(res.meta.pages || 1);
       setError("");
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Failed to load students");
+      setError(formatApiError(err, "Failed to load students"));
     }
   }
 
@@ -65,17 +72,45 @@ export default function StudentsPage() {
   }, []);
 
   useEffect(() => {
+    setSelectedSubjects([]);
+
     if (!selectedClass) {
       setSubjects([]);
-      setSelectedSubjects([]);
+      setSubjectsLoading(false);
       return;
     }
+
+    const level = selectedClass.level;
+    let cancelled = false;
+    setSubjectsLoading(true);
+    setSubjects([]);
+
     api<{ success: true; data: Subject[] }>(
-      `/api/subjects?level=${encodeURIComponent(selectedClass.level)}&limit=100`
+      `/api/subjects?level=${encodeURIComponent(level)}&limit=100`
     )
-      .then((res) => setSubjects(res.data))
-      .catch((err) => setError(err.message));
-  }, [selectedClass]);
+      .then((res) => {
+        if (cancelled) return;
+        const rows = Array.isArray(res.data) ? res.data : [];
+        setSubjects(rows);
+        // Pre-select up to 6 so registration is not blocked by an empty checklist.
+        setSelectedSubjects(rows.slice(0, Math.min(6, rows.length)).map((s) => s.id));
+        if (rows.length === 0) {
+          setError(`No subjects found for level ${level}. Add subjects for this level first.`);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setSubjects([]);
+        setError(formatApiError(err, `Failed to load subjects for ${level}`));
+      })
+      .finally(() => {
+        if (!cancelled) setSubjectsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClass?.id, selectedClass?.level]);
 
   function toggleSubject(id: string) {
     setSelectedSubjects((prev) =>
@@ -83,12 +118,22 @@ export default function StudentsPage() {
     );
   }
 
+  function selectRecommended() {
+    setSelectedSubjects(subjects.slice(0, Math.min(6, subjects.length)).map((s) => s.id));
+  }
+
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     setMessage("");
     setError("");
+    if (!form.classId) {
+      setError("Validation failed (classId)\nclassId: Select a class");
+      return;
+    }
     if (selectedSubjects.length < 5 || selectedSubjects.length > 11) {
-      setError("Select between 5 and 11 subjects");
+      setError(
+        `Validation failed (subjectIds)\nsubjectIds: Select between 5 and 11 subjects (currently ${selectedSubjects.length}). Choose a class, then tick subjects below.`
+      );
       return;
     }
     try {
@@ -102,9 +147,10 @@ export default function StudentsPage() {
       setMessage("Student registered with subject enrollments");
       setForm(emptyForm);
       setSelectedSubjects([]);
+      setSubjects([]);
       await load();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Create failed");
+      setError(formatApiError(err, "Create failed"));
     }
   }
 
@@ -118,7 +164,7 @@ export default function StudentsPage() {
       });
       setMessage("Temporary password set — user must change it on next login");
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Reset failed");
+      setError(formatApiError(err, "Reset failed"));
     }
   }
 
@@ -128,7 +174,7 @@ export default function StudentsPage() {
       await api(`/api/students/${id}`, { method: "DELETE" });
       await load();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Delete failed");
+      setError(formatApiError(err, "Delete failed"));
     }
   }
 
@@ -220,35 +266,73 @@ export default function StudentsPage() {
               </Select>
             </div>
             <div className="md:col-span-2">
-              <Label>
-                Subjects for {selectedClass?.level ?? "class"} ({selectedSubjects.length}/5–11)
-              </Label>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {subjects.map((s) => (
-                  <label key={s.id} className="flex items-center gap-2 rounded-xl border border-line px-3 py-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={selectedSubjects.includes(s.id)}
-                      onChange={() => toggleSubject(s.id)}
-                    />
-                    <span>
-                      {s.code} — {s.title}
-                    </span>
-                  </label>
-                ))}
-                {selectedClass && subjects.length === 0 ? (
-                  <p className="text-sm text-muted">No subjects for this class level yet.</p>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <Label>
+                  Subjects for {selectedClass?.level ?? "class"} ({selectedSubjects.length}/5–11
+                  selected)
+                </Label>
+                {subjects.length > 0 ? (
+                  <button
+                    type="button"
+                    className="text-sm font-semibold text-brand"
+                    onClick={selectRecommended}
+                  >
+                    Select recommended (6)
+                  </button>
                 ) : null}
               </div>
+              {!selectedClass ? (
+                <p className="text-sm text-muted">Select a class to load matching subjects.</p>
+              ) : subjectsLoading ? (
+                <p className="text-sm text-muted">Loading subjects for {selectedClass.level}…</p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {subjects.map((s) => {
+                    const checked = selectedSubjects.includes(s.id);
+                    return (
+                      <label
+                        key={s.id}
+                        className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm ${
+                          checked ? "border-brand bg-brand-soft" : "border-line"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-[var(--brand)]"
+                          checked={checked}
+                          onChange={() => toggleSubject(s.id)}
+                        />
+                        <span>
+                          {s.code} — {s.title}
+                        </span>
+                      </label>
+                    );
+                  })}
+                  {subjects.length === 0 ? (
+                    <p className="text-sm text-muted">
+                      No subjects for level {selectedClass.level}. Add them under Subjects first.
+                    </p>
+                  ) : null}
+                </div>
+              )}
             </div>
             <div className="md:col-span-2">
-              <Button type="submit">Create student & enroll subjects</Button>
+              <Button type="submit" disabled={!canSubmit}>
+                Create student & enroll subjects
+              </Button>
+              {!canSubmit && selectedClass && !subjectsLoading ? (
+                <p className="mt-2 text-sm text-muted">
+                  Select between 5 and 11 subjects to enable create ({selectedSubjects.length}{" "}
+                  selected).
+                </p>
+              ) : null}
+              <ErrorText>{error}</ErrorText>
             </div>
           </form>
         </Card>
       ) : null}
 
-      <ErrorText>{error}</ErrorText>
+      {!user || user.role !== "ADMIN" ? <ErrorText>{error}</ErrorText> : null}
       {message ? <p className="mb-4 text-sm text-brand">{message}</p> : null}
 
       <Card className="overflow-x-auto">

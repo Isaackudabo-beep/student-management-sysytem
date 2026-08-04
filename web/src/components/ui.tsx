@@ -52,7 +52,9 @@ export function Label({ children }: { children: ReactNode }) {
 }
 
 export function ErrorText({ children }: { children: ReactNode }) {
-  return children ? <p className="mt-2 text-sm text-danger">{children}</p> : null;
+  return children ? (
+    <p className="mt-2 whitespace-pre-line text-sm text-danger">{children}</p>
+  ) : null;
 }
 
 export function Stat({ label, value }: { label: string; value: string | number }) {

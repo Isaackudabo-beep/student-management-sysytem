@@ -27,6 +27,19 @@ export async function createEnrollment(input: {
     throw new AppError(400, "A student cannot have more than 11 subjects in a session");
   }
 
+  const existing = await prisma.enrollment.findUnique({
+    where: {
+      studentId_subjectId_session: {
+        studentId: input.studentId,
+        subjectId: input.subjectId,
+        session: input.session,
+      },
+    },
+  });
+  if (existing) {
+    throw new AppError(409, "This student is already enrolled in that subject for this session");
+  }
+
   return prisma.enrollment.create({
     data: input,
     include: { student: true, subject: true },

@@ -22,6 +22,13 @@ const NAV: Array<{ href: string; label: string; roles: Role[] }> = [
   { href: "/results", label: "My Results", roles: ["STUDENT"] },
 ];
 
+function rolesForPath(pathname: string): Role[] | null {
+  const exact = NAV.find((item) => item.href === pathname);
+  if (exact) return exact.roles;
+  const prefix = NAV.find((item) => pathname.startsWith(item.href + "/"));
+  return prefix?.roles ?? null;
+}
+
 export function AppShell({ children, title }: { children: ReactNode; title: string }) {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
@@ -35,6 +42,11 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
     }
     if (user.mustChangePassword && pathname !== "/change-password") {
       router.replace("/change-password");
+      return;
+    }
+    const allowed = rolesForPath(pathname);
+    if (allowed && !allowed.includes(user.role)) {
+      router.replace(dashboardPath(user.role));
     }
   }, [loading, user, router, pathname]);
 
@@ -50,6 +62,15 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
     return (
       <main className="grid min-h-screen place-items-center text-muted">
         Redirecting to password change…
+      </main>
+    );
+  }
+
+  const allowed = rolesForPath(pathname);
+  if (allowed && !allowed.includes(user.role)) {
+    return (
+      <main className="grid min-h-screen place-items-center text-muted">
+        Redirecting to your dashboard…
       </main>
     );
   }

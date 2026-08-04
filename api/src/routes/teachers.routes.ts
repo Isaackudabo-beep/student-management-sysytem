@@ -22,15 +22,6 @@ router.get("/", authorize("ADMIN"), validate(searchQuerySchema, "query"), async 
   }
 });
 
-router.get("/:id", authorize("ADMIN"), async (req, res, next) => {
-  try {
-    const teacher = await teacherService.getTeacherById(req.params.id);
-    res.json({ success: true, data: teacher });
-  } catch (error) {
-    next(error);
-  }
-});
-
 router.post("/", authorize("ADMIN"), validate(createTeacherSchema), async (req, res, next) => {
   try {
     const teacher = await teacherService.createTeacher(req.body);
@@ -40,6 +31,7 @@ router.post("/", authorize("ADMIN"), validate(createTeacherSchema), async (req, 
   }
 });
 
+// Static path before /:id so "assign-subject" is never captured as an id.
 router.post(
   "/assign-subject",
   authorize("ADMIN"),
@@ -53,6 +45,15 @@ router.post(
     }
   }
 );
+
+router.get("/:id", authorize("ADMIN"), async (req, res, next) => {
+  try {
+    const teacher = await teacherService.getTeacherById(req.params.id);
+    res.json({ success: true, data: teacher });
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.delete("/:id", authorize("ADMIN"), async (req, res, next) => {
   try {

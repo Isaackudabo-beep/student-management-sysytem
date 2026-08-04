@@ -1,22 +1,37 @@
 "use client";
 
 // Purpose: Admin enrolls students into subjects for a session.
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button, Card, ErrorText, Input, Label, Select } from "@/components/ui";
-import { api, ApiRequestError } from "@/lib/api";
+import { api, formatApiError } from "@/lib/api";
 import type { Enrollment, Student, Subject } from "@/lib/types";
+
+const CURRENT_SESSION = "2025/2026";
 
 export default function EnrollmentsPage() {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [form, setForm] = useState({
     studentId: "",
     subjectId: "",
-    session: "2024/2025",
+    session: CURRENT_SESSION,
   });
+
+  const selectedStudent = useMemo(
+    () => students.find((s) => s.id === form.studentId),
+    [students, form.studentId]
+  );
+
+  const matchingSubjects = useMemo(() => {
+    if (!selectedStudent) return [];
+    return subjects.filter(
+      (s) => s.level.toUpperCase() === selectedStudent.level.toUpperCase()
+    );
+  }, [subjects, selectedStudent]);
 
   async function load() {
     try {
@@ -28,13 +43,23 @@ export default function EnrollmentsPage() {
       setEnrollments(e.data);
       setStudents(st.data);
       setSubjects(su.data);
-      setForm((f) => ({
-        ...f,
-        studentId: f.studentId || st.data[0]?.id || "",
-        subjectId: f.subjectId || su.data[0]?.id || "",
-      }));
+      setForm((f) => {
+        const studentId = f.studentId || st.data[0]?.id || "";
+        const student = st.data.find((s) => s.id === studentId) ?? st.data[0];
+        const levelSubjects = student
+          ? su.data.filter((s) => s.level.toUpperCase() === student.level.toUpperCase())
+          : [];
+        const subjectStillValid = levelSubjects.some((s) => s.id === f.subjectId);
+        return {
+          ...f,
+          studentId,
+          subjectId: subjectStillValid ? f.subjectId : levelSubjects[0]?.id || "",
+          session: f.session || CURRENT_SESSION,
+        };
+      });
+      setError("");
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Failed to load");
+      setError(formatApiError(err, "Failed to load"));
     }
   }
 
@@ -42,23 +67,43 @@ export default function EnrollmentsPage() {
     void load();
   }, []);
 
+  useEffect(() => {
+    if (!selectedStudent) return;
+    const levelSubjects = subjects.filter(
+      (s) => s.level.toUpperCase() === selectedStudent.level.toUpperCase()
+    );
+    setForm((f) => {
+      if (levelSubjects.some((s) => s.id === f.subjectId)) return f;
+      return { ...f, subjectId: levelSubjects[0]?.id || "" };
+    });
+  }, [selectedStudent, subjects]);
+
   async function onCreate(e: FormEvent) {
     e.preventDefault();
+    setMessage("");
+    setError("");
+    if (!form.studentId || !form.subjectId) {
+      setError("Select a student and a subject that matches their class level");
+      return;
+    }
     try {
       await api("/api/enrollments", { method: "POST", body: JSON.stringify(form) });
+      setMessage("Student enrolled in subject");
       await load();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Enroll failed");
+      setError(formatApiError(err, "Enroll failed"));
     }
   }
 
   async function onDelete(id: string) {
     if (!confirm("Remove enrollment?")) return;
+    setError("");
     try {
       await api(`/api/enrollments/${id}`, { method: "DELETE" });
+      setMessage("Enrollment removed");
       await load();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Delete failed");
+      setError(formatApiError(err, "Delete failed"));
     }
   }
 
@@ -77,22 +122,26 @@ export default function EnrollmentsPage() {
             >
               {students.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.matricNumber} — {s.firstName} {s.lastName}
+                  {s.admissionNumber} — {s.firstName} {s.lastName} ({s.level})
                 </option>
               ))}
             </Select>
           </div>
           <div>
-            <Label>Subject</Label>
+            <Label>Subject{selectedStudent ? ` (${selectedStudent.level})` : ""}</Label>
             <Select
               value={form.subjectId}
               onChange={(e) => setForm({ ...form, subjectId: e.target.value })}
             >
-              {subjects.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.code} — {s.title}
-                </option>
-              ))}
+              {matchingSubjects.length === 0 ? (
+                <option value="">No subjects for this level</option>
+              ) : (
+                matchingSubjects.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.code} — {s.title}
+                  </option>
+                ))
+              )}
             </Select>
           </div>
           <div>
@@ -104,14 +153,20 @@ export default function EnrollmentsPage() {
             />
           </div>
           <div className="flex items-end">
-            <Button type="submit" className="w-full">
+            <Button type="submit" className="w-full" disabled={!form.subjectId}>
               Enroll
             </Button>
           </div>
         </form>
+        {selectedStudent && matchingSubjects.length === 0 ? (
+          <p className="mt-3 text-sm text-muted">
+            No subjects exist for level {selectedStudent.level}. Add them under Subjects first.
+          </p>
+        ) : null}
       </Card>
 
       <ErrorText>{error}</ErrorText>
+      {message ? <p className="mb-4 text-sm text-brand">{message}</p> : null}
 
       <Card>
         <div className="overflow-x-auto">
