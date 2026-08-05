@@ -47,7 +47,7 @@ export function RoleLoginForm({ role }: { role: Role }) {
         setError(err.message);
       } else if (err instanceof TypeError) {
         // fetch() throws TypeError when the API is unreachable (offline / not started)
-        setError("Cannot reach the API. Make sure it is running on http://localhost:4000");
+        setError(`Cannot reach the API at ${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}. Check that the backend is online.`);
       } else {
         setError(err instanceof Error ? err.message : "Login failed");
       }
