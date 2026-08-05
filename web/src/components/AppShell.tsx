@@ -17,6 +17,7 @@ const NAV: Array<{ href: string; label: string; roles: Role[] }> = [
   { href: "/teachers", label: "Teachers", roles: ["ADMIN"] },
   { href: "/subjects", label: "Subjects", roles: ["ADMIN", "TEACHER"] },
   { href: "/enrollments", label: "Enrollments", roles: ["ADMIN"] },
+  { href: "/term", label: "Close Term", roles: ["ADMIN"] },
   { href: "/scores", label: "Scores", roles: ["ADMIN", "TEACHER"] },
   { href: "/announcements", label: "Announcements", roles: ["ADMIN"] },
   { href: "/results", label: "My Results", roles: ["STUDENT"] },
@@ -79,7 +80,7 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
 
   return (
     <div className="mx-auto flex min-h-screen max-w-7xl gap-6 px-4 py-6 md:px-6">
-      <aside className="hidden w-64 shrink-0 rounded-3xl border border-line bg-bg-elevated p-5 shadow-[var(--shadow)] md:block">
+      <aside className="no-print hidden w-64 shrink-0 rounded-3xl border border-line bg-bg-elevated p-5 shadow-[var(--shadow)] md:block">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand">SMS</p>
         <h2 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold">
           School Desk
@@ -115,7 +116,7 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
       </aside>
 
       <section className="min-w-0 flex-1">
-        <header className="mb-6 rounded-3xl border border-line bg-bg-elevated px-6 py-5 shadow-[var(--shadow)]">
+        <header className="no-print mb-6 rounded-3xl border border-line bg-bg-elevated px-6 py-5 shadow-[var(--shadow)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm text-muted md:hidden">

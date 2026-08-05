@@ -65,6 +65,7 @@ export async function getDashboardStats(actor: AuthUser) {
         .slice(0, 8),
       quickActions: [
         { label: "Register student", href: "/students" },
+        { label: "Close term", href: "/term" },
         { label: "Manage classes", href: "/classes" },
         { label: "Post announcement", href: "/announcements" },
         { label: "Assign teacher subject", href: "/teachers" },

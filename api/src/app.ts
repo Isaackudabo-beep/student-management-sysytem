@@ -14,6 +14,7 @@ import scoresRoutes from "./routes/scores.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import classesRoutes from "./routes/classes.routes.js";
 import announcementsRoutes from "./routes/announcements.routes.js";
+import termRoutes from "./routes/term.routes.js";
 
 export function createApp() {
   const app = express();
@@ -41,6 +42,7 @@ export function createApp() {
   app.use("/api/dashboard", dashboardRoutes);
   app.use("/api/classes", classesRoutes);
   app.use("/api/announcements", announcementsRoutes);
+  app.use("/api/term", termRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

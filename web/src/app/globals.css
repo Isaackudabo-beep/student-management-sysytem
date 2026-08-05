@@ -56,3 +56,20 @@ select,
 textarea {
   font: inherit;
 }
+
+@media print {
+  body {
+    background: #fff !important;
+    color: #14212b !important;
+  }
+
+  aside,
+  .no-print {
+    display: none !important;
+  }
+
+  .print-report {
+    box-shadow: none !important;
+    border: none !important;
+  }
+}

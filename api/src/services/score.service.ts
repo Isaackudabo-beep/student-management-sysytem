@@ -145,7 +145,13 @@ export async function getStudentResults(studentId: string, actor: AuthUser) {
     throw new AppError(403, "Students can only view their own results");
   }
 
-  await assertFound(await prisma.student.findUnique({ where: { id: studentId } }), "Student not found");
+  const student = assertFound(
+    await prisma.student.findUnique({
+      where: { id: studentId },
+      include: { schoolClass: true, user: { select: { fullName: true } } },
+    }),
+    "Student not found"
+  );
 
   const enrollments = await prisma.enrollment.findMany({
     where: { studentId },
@@ -153,7 +159,7 @@ export async function getStudentResults(studentId: string, actor: AuthUser) {
       subject: true,
       score: { include: { teacher: true } },
     },
-    orderBy: { session: "desc" },
+    orderBy: [{ session: "desc" }, { createdAt: "asc" }],
   });
 
   const scored = enrollments.filter((e) => e.score);
@@ -162,7 +168,20 @@ export async function getStudentResults(studentId: string, actor: AuthUser) {
       ? Number((scored.reduce((sum, e) => sum + (e.score?.total ?? 0), 0) / scored.length).toFixed(2))
       : null;
 
+  const sessions = [...new Set(enrollments.map((e) => e.session))];
+
   return {
+    student: {
+      id: student.id,
+      fullName: student.user?.fullName ?? `${student.firstName} ${student.lastName}`,
+      firstName: student.firstName,
+      lastName: student.lastName,
+      admissionNumber: student.admissionNumber,
+      className: student.schoolClass?.name ?? student.level,
+      level: student.level,
+      department: student.department,
+    },
+    sessions,
     enrollments: enrollments.map((e) => ({
       ...e,
       resultStatus: e.score ? "GRADED" : "AWAITING_RESULT",
