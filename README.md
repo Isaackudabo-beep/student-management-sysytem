@@ -153,7 +153,7 @@ Web: http://localhost:3000
 1. **Database** — Neon / Supabase / Railway Postgres  
 2. **API** — Railway / Render / Fly.io  
    - **Root Directory must be `api`**  
-   - Build: `npm install && npm run build`  
+   - Build: `npm install --include=dev && npm run build`  
    - Start: `npm run start:render`  
    - Set `DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `CORS_ORIGIN` (your Vercel URL)  
    - See [docs/RENDER.md](docs/RENDER.md) for Render settings  

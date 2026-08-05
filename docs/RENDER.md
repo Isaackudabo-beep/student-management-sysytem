@@ -1,23 +1,19 @@
 # Deploy the API on Render
 
-This repo is a **monorepo**. The API is in the **`api`** folder (same idea as Vercel needing `web`).
+This repo is a **monorepo**. The API is in the **`api`** folder.
 
-## Fix a failed / unreachable deploy
-
-### 1. Root Directory (most common)
-
-In Render → your Web Service → **Settings**:
+## Dashboard settings (copy exactly)
 
 | Setting | Value |
 |---------|--------|
 | **Root Directory** | `api` |
 | **Runtime** | Node |
-| **Build Command** | `npm install && npm run build` |
+| **Build Command** | `npm install --include=dev && npm run build` |
 | **Start Command** | `npm run start:render` |
 
-`start:render` runs migrations, then starts the server.
+> **Why `--include=dev`?** Render sets `NODE_ENV=production` during build. Without `--include=dev`, npm skips build tools and the deploy fails on `tsc` / types.
 
-### 2. Environment variables
+## Environment variables
 
 | Key | Value |
 |-----|--------|
@@ -28,38 +24,23 @@ In Render → your Web Service → **Settings**:
 | `CORS_ORIGIN` | Your Vercel URL, e.g. `https://your-app.vercel.app` (no trailing slash) |
 | `NODE_ENV` | `production` |
 
-Do **not** set `PORT` yourself — Render injects it.
+Do **not** set `PORT` — Render injects it.
 
-### 3. After deploy
+## After you change settings
 
-1. Open `https://YOUR-SERVICE.onrender.com/health`  
-   Expect: `{"success":true,"message":"SMS API is healthy"}`
-2. On Vercel, set `NEXT_PUBLIC_API_URL` = `https://YOUR-SERVICE.onrender.com`
-3. Redeploy the Vercel app (so the browser picks up the API URL)
+1. **Manual Deploy** → enable **Clear build cache & deploy**
+2. Open `https://YOUR-SERVICE.onrender.com/health`
+3. Expect: `{"success":true,"message":"SMS API is healthy"}`
+4. On Vercel set `NEXT_PUBLIC_API_URL` to that Render URL and redeploy the web app
 
-### 4. Seed demo users (optional, once)
-
-In Render → Shell (or locally against Neon):
-
-```bash
-cd api
-npx tsx prisma/seed.ts
-```
-
-(Requires `tsx` — on Render you can run from a one-off job, or seed from your laptop with the same `DATABASE_URL`.)
-
-From your laptop:
+## Seed demo users (from your laptop)
 
 ```powershell
 cd api
-# ensure .env points at Neon
+# .env must use the same Neon DATABASE_URL / DIRECT_URL
 npm run db:seed
 ```
 
-## Blueprint (optional)
+## Free tier
 
-Repo includes `render.yaml`. In Render: **New** → **Blueprint** → select this repo, then fill in the `sync: false` env vars when prompted.
-
-## Free tier note
-
-Render free web services **spin down** after idle. The first request after sleep can take ~30–60s; Neon cold start can add more. That looks like a hang, not always a crash.
+Render free services sleep when idle. First request after sleep can take 30–60s.
