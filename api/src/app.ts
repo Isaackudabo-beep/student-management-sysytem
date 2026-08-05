@@ -19,10 +19,19 @@ import termRoutes from "./routes/term.routes.js";
 export function createApp() {
   const app = express();
 
+  // Support one origin or a comma-separated list (e.g. production + preview).
+  const allowedOrigins = env.CORS_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean);
+
   app.use(helmet());
   app.use(
     cors({
-      origin: env.CORS_ORIGIN,
+      origin(origin, callback) {
+        // Allow non-browser clients (no Origin header) and configured frontends.
+        if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+          return callback(null, true);
+        }
+        return callback(new Error(`CORS blocked for origin: ${origin}`));
+      },
       credentials: true,
     })
   );
