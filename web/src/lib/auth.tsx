@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api, setToken } from "./api";
+import { api, clearAuthStorage, setToken } from "./api";
 import type { AuthUser, Role } from "./types";
 
 type AuthContextValue = {
@@ -47,7 +47,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }>("/api/auth/me");
       setUser(mapUser(res.data));
     } catch {
-      setToken(null);
+      // Invalid / expired token — treat as logged out.
+      clearAuthStorage();
       setUser(null);
     } finally {
       setLoading(false);
@@ -57,9 +58,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("sms_token") : null;
     if (!token) {
+      setUser(null);
       setLoading(false);
       return;
     }
+    // Only restore a session after /api/auth/me succeeds with this token.
     void refresh();
   }, [refresh]);
 
@@ -78,8 +81,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    setToken(null);
+    clearAuthStorage();
     setUser(null);
+    setLoading(false);
   }, []);
 
   const value = useMemo(

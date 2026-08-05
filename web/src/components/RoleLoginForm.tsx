@@ -27,11 +27,12 @@ const COPY: Record<Role, { title: string; blurb: string; demo: string }> = {
 };
 
 export function RoleLoginForm({ role }: { role: Role }) {
-  const { login } = useAuth();
+  const { login, user, loading, logout } = useAuth();
   const router = useRouter();
   const meta = COPY[role];
-  const [email, setEmail] = useState(meta.demo);
-  const [password, setPassword] = useState("Password123!");
+  // Empty by default so opening a portal never looks like an automatic login.
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -56,6 +57,49 @@ export function RoleLoginForm({ role }: { role: Role }) {
     }
   }
 
+  if (loading) {
+    return (
+      <main className="grid min-h-screen place-items-center text-muted">
+        Loading…
+      </main>
+    );
+  }
+
+  if (user) {
+    return (
+      <main className="grid min-h-screen place-items-center px-4">
+        <div className="w-full max-w-md rounded-3xl border border-line bg-bg-elevated p-8 shadow-[var(--shadow)]">
+          <Link href="/" className="text-sm font-semibold text-brand">
+            ← Back
+          </Link>
+          <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl font-semibold">
+            {meta.title}
+          </h1>
+          <p className="mt-2 text-muted">
+            You are already signed in as {user.fullName} ({user.role}).
+          </p>
+          <Link
+            href={user.mustChangePassword ? "/change-password" : dashboardPath(user.role)}
+            className="mt-6 block w-full rounded-xl bg-brand py-3 text-center font-semibold text-white"
+          >
+            Continue to dashboard
+          </Link>
+          <button
+            type="button"
+            className="mt-3 w-full text-sm font-semibold text-muted"
+            onClick={() => {
+              logout();
+              setEmail("");
+              setPassword("");
+            }}
+          >
+            Sign out and use a different account
+          </button>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="grid min-h-screen place-items-center px-4">
       <form
@@ -77,6 +121,8 @@ export function RoleLoginForm({ role }: { role: Role }) {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            placeholder={meta.demo}
+            autoComplete="username"
             required
           />
         </label>
@@ -88,6 +134,8 @@ export function RoleLoginForm({ role }: { role: Role }) {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            placeholder="Your password"
+            autoComplete="current-password"
             required
           />
         </label>
@@ -103,6 +151,10 @@ export function RoleLoginForm({ role }: { role: Role }) {
         </button>
 
         <p className="mt-4 text-center text-sm text-muted">
+          Demo: {meta.demo} / Password123!
+        </p>
+
+        <p className="mt-2 text-center text-sm text-muted">
           <Link href="/forgot-password" className="font-semibold text-brand">
             Forgot password?
           </Link>

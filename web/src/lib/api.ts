@@ -59,15 +59,41 @@ export function formatApiError(err: unknown, fallback = "Request failed"): strin
   return err.message || fallback;
 }
 
+const TOKEN_KEY = "sms_token";
+
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("sms_token");
+  return localStorage.getItem(TOKEN_KEY);
 }
 
 export function setToken(token: string | null) {
   if (typeof window === "undefined") return;
-  if (token) localStorage.setItem("sms_token", token);
-  else localStorage.removeItem("sms_token");
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+/** Clears JWT and any sms_* auth leftovers from browser storage. */
+export function clearAuthStorage() {
+  if (typeof window === "undefined") return;
+
+  localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
+
+  for (const store of [localStorage, sessionStorage]) {
+    const keys: string[] = [];
+    for (let i = 0; i < store.length; i++) {
+      const key = store.key(i);
+      if (key?.startsWith("sms_")) keys.push(key);
+    }
+    for (const key of keys) store.removeItem(key);
+  }
+
+  // No auth cookies today — clear any sms_* cookies defensively.
+  for (const part of document.cookie.split(";")) {
+    const name = part.split("=")[0]?.trim();
+    if (!name?.startsWith("sms_")) continue;
+    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+  }
 }
 
 export async function api<T>(

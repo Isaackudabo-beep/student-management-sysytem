@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import clsx from "clsx";
-import { dashboardPath, loginPath, useAuth } from "@/lib/auth";
+import { dashboardPath, useAuth } from "@/lib/auth";
 import type { Role } from "@/lib/types";
 
 const NAV: Array<{ href: string; label: string; roles: Role[] }> = [
@@ -105,9 +105,10 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
           ))}
         </nav>
         <button
+          type="button"
           onClick={() => {
             logout();
-            router.replace(loginPath(user.role));
+            router.replace("/");
           }}
           className="mt-8 w-full rounded-xl border border-line px-3 py-2 text-sm font-semibold"
         >
@@ -126,16 +127,28 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
                 {title}
               </h1>
             </div>
-            <div className="flex flex-wrap gap-2 md:hidden">
-              {links.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="rounded-full border border-line px-3 py-1 text-xs font-semibold"
-                >
-                  {link.label}
-                </Link>
-              ))}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap gap-2 md:hidden">
+                {links.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="rounded-full border border-line px-3 py-1 text-xs font-semibold"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  router.replace("/");
+                }}
+                className="rounded-full border border-line px-3 py-1 text-xs font-semibold md:hidden"
+              >
+                Sign out
+              </button>
             </div>
           </div>
         </header>

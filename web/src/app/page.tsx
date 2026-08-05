@@ -2,19 +2,10 @@
 
 // Purpose: Landing — three role portals for secondary school SMS.
 import Link from "next/link";
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { dashboardPath, useAuth } from "@/lib/auth";
 
 export default function HomePage() {
   const { user, loading } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!loading && user) {
-      router.replace(user.mustChangePassword ? "/change-password" : dashboardPath(user.role));
-    }
-  }, [loading, user, router]);
 
   if (loading) {
     return (
@@ -41,6 +32,22 @@ export default function HomePage() {
         Separate portals for Admins, Teachers, and Students. Manage JSS/SS classes, enroll 5–11
         subjects, and publish school announcements.
       </p>
+
+      {/* Valid session only — never auto-redirect; user chooses to continue. */}
+      {user ? (
+        <div className="mt-8 max-w-xl rounded-2xl border border-line bg-bg-elevated p-5 shadow-[var(--shadow)]">
+          <p className="text-sm text-muted">
+            Signed in as <span className="font-semibold text-ink">{user.fullName}</span> ({user.role})
+          </p>
+          <Link
+            href={user.mustChangePassword ? "/change-password" : dashboardPath(user.role)}
+            className="mt-4 inline-flex rounded-xl bg-brand px-6 py-3 font-semibold text-white shadow-[var(--shadow)] transition hover:brightness-110"
+          >
+            Continue to dashboard
+          </Link>
+        </div>
+      ) : null}
+
       <div className="mt-10 grid gap-3 sm:grid-cols-3">
         {[
           ["/login/admin", "Admin Login"],
