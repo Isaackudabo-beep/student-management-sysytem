@@ -152,10 +152,11 @@ Web: http://localhost:3000
 
 1. **Database** — Neon / Supabase / Railway Postgres  
 2. **API** — Railway / Render / Fly.io  
-   - Set `DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `CORS_ORIGIN`  
-   - Build: `npm install && npx prisma migrate deploy && npm run build`  
-   - Start: `npm start`  
-   - Root directory / service path: **`api`**
+   - **Root Directory must be `api`**  
+   - Build: `npm install && npm run build`  
+   - Start: `npm run start:render`  
+   - Set `DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `CORS_ORIGIN` (your Vercel URL)  
+   - See [docs/RENDER.md](docs/RENDER.md) for Render settings  
 3. **Web** — Vercel  
    - **Root Directory must be `web`** (otherwise you get a successful deploy that 404s)  
    - Set `NEXT_PUBLIC_API_URL` to your API URL  
