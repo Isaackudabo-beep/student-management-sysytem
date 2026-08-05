@@ -1,6 +1,9 @@
 // Purpose: Typed API client — attaches JWT and normalizes errors.
+const RENDER_API = "https://student-management-sysytem-xx6i.onrender.com";
+
 export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+  process.env.NEXT_PUBLIC_API_URL ??
+  (process.env.NODE_ENV === "production" ? RENDER_API : "http://localhost:4000");
 
 export type ApiError = {
   success: false;
