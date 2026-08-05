@@ -11,7 +11,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "node scripts/build.mjs",
     "start": "node dist/index.js",
-    "start:render": "prisma migrate deploy && node dist/index.js",
+    "start:render": "node scripts/start-render.mjs",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",

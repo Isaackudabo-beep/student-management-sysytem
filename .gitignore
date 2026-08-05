@@ -1,6 +1,5 @@
 ﻿node_modules/
-dist/
-.next/
+web/.next/
 .env
 .env.local
 *.log
@@ -9,3 +8,7 @@ coverage/
 .turbo/
 *.zip
 .prisma/
+
+# Keep api/dist in git so Render can boot even if build is misconfigured.
+# web build output stays ignored above.
+/web/dist/
