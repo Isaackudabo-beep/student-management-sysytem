@@ -155,8 +155,11 @@ Web: http://localhost:3000
    - Set `DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `CORS_ORIGIN`  
    - Build: `npm install && npx prisma migrate deploy && npm run build`  
    - Start: `npm start`  
+   - Root directory / service path: **`api`**
 3. **Web** — Vercel  
+   - **Root Directory must be `web`** (otherwise you get a successful deploy that 404s)  
    - Set `NEXT_PUBLIC_API_URL` to your API URL  
+   - See [docs/VERCEL.md](docs/VERCEL.md) for the 404 fix step-by-step  
 
 ## License
 
