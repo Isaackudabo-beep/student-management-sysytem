@@ -15,7 +15,10 @@ export async function authenticate(req, _res, next) {
         const payload = verifyToken(token);
         const user = await prisma.user.findUnique({
             where: { id: payload.sub },
-            include: { student: true, teacher: true },
+            include: {
+                student: { select: { id: true } },
+                teacher: { select: { id: true } },
+            },
         });
         if (!user) {
             throw new AppError(401, "Invalid token");

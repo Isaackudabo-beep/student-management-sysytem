@@ -59,6 +59,7 @@ export async function createStudent(input) {
                 studentId: student.id,
                 subjectId,
                 session: input.session,
+                term: input.term ?? "FIRST",
             })),
         });
         return tx.student.findUnique({
@@ -113,16 +114,34 @@ export async function listStudents(params) {
     };
 }
 export async function getStudentById(id) {
-    return assertFound(await prisma.student.findUnique({
+    const student = assertFound(await prisma.student.findUnique({
         where: { id },
         include: {
             user: {
                 select: { id: true, fullName: true, email: true, role: true, mustChangePassword: true },
             },
             schoolClass: true,
-            enrollments: { include: { subject: true, score: true } },
+            enrollments: {
+                include: { subject: true, score: true },
+                orderBy: [{ session: "desc" }, { term: "asc" }, { createdAt: "asc" }],
+            },
+            archivedResults: {
+                orderBy: [{ session: "desc" }, { term: "asc" }, { archivedAt: "desc" }],
+            },
         },
     }), "Student not found");
+    const classLabel = student.academicStatus === "REPEATING"
+        ? `Repeated · ${student.schoolClass.name}`
+        : student.schoolClass.name;
+    return {
+        ...student,
+        classDisplay: classLabel,
+        academicStatusLabel: student.academicStatus === "REPEATING"
+            ? "Repeated"
+            : student.academicStatus === "PROMOTED"
+                ? "Promoted"
+                : "Active",
+    };
 }
 export async function updateStudent(id, input) {
     await assertFound(await prisma.student.findUnique({ where: { id } }), "Student not found");

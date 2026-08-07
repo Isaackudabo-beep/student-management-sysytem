@@ -9,6 +9,8 @@ const listSchema = z.object({
     studentId: z.string().optional(),
     subjectId: z.string().optional(),
     session: z.string().optional(),
+    term: z.enum(["FIRST", "SECOND", "THIRD"]).optional(),
+    classId: z.string().optional(),
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
 });

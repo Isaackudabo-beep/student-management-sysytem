@@ -1,4 +1,4 @@
-// Purpose: Render start — ensure dist exists, apply Prisma migrations, then boot API.
+// Purpose: Render start — build if needed, migrate/ensure schema, bootstrap admin, boot API.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -10,6 +10,14 @@ process.chdir(apiRoot);
 
 const entry = path.join(apiRoot, "dist", "index.js");
 const buildScript = path.join(apiRoot, "scripts", "build.mjs");
+const ensureAdminScript = path.join(apiRoot, "scripts", "ensure-admin.mjs");
+const ensureSql = path.join(
+  apiRoot,
+  "prisma",
+  "migrations",
+  "20260807180000_ensure_schema_idempotent",
+  "migration.sql"
+);
 const prismaBin = path.join(
   apiRoot,
   "node_modules",
@@ -18,7 +26,7 @@ const prismaBin = path.join(
 );
 const prismaCliJs = path.join(apiRoot, "node_modules", "prisma", "build", "index.js");
 
-function run(command, args, { shell = false } = {}) {
+function run(command, args, { shell = false, allowFail = false } = {}) {
   console.log(`> ${command} ${args.join(" ")}`);
   const result = spawnSync(command, args, {
     stdio: "inherit",
@@ -28,11 +36,23 @@ function run(command, args, { shell = false } = {}) {
   });
   if (result.error) {
     console.error(result.error);
-    process.exit(1);
+    if (!allowFail) process.exit(1);
+    return result.status ?? 1;
   }
-  if (result.status !== 0) {
+  if (result.status !== 0 && !allowFail) {
     process.exit(result.status ?? 1);
   }
+  return result.status ?? 0;
+}
+
+function runPrisma(args, opts = {}) {
+  if (fs.existsSync(prismaBin)) {
+    return run(prismaBin, args, { shell: process.platform === "win32", ...opts });
+  }
+  if (fs.existsSync(prismaCliJs)) {
+    return run(process.execPath, [prismaCliJs, ...args], opts);
+  }
+  return run("npx", ["prisma", ...args], { shell: true, ...opts });
 }
 
 if (!fs.existsSync(entry)) {
@@ -42,8 +62,6 @@ if (!fs.existsSync(entry)) {
 
 if (!fs.existsSync(entry)) {
   console.error("FATAL: dist/index.js still missing after build.");
-  console.error("cwd=", process.cwd());
-  console.error("expected=", entry);
   process.exit(1);
 }
 
@@ -53,14 +71,18 @@ if (!process.env.DATABASE_URL) {
 }
 
 console.log("Applying database migrations (prisma migrate deploy)...");
-if (fs.existsSync(prismaBin)) {
-  run(prismaBin, ["migrate", "deploy"], { shell: process.platform === "win32" });
-} else if (fs.existsSync(prismaCliJs)) {
-  run(process.execPath, [prismaCliJs, "migrate", "deploy"]);
-} else {
-  // Fallback used on Render when local bin shim is unavailable.
-  run("npx", ["prisma", "migrate", "deploy"], { shell: true });
+runPrisma(["migrate", "deploy"], { allowFail: true });
+
+if (fs.existsSync(ensureSql)) {
+  console.log("Ensuring schema columns/enums (idempotent SQL)...");
+  runPrisma(["db", "execute", "--file", ensureSql], { allowFail: false });
 }
+
+// Record any remaining pending migrations when possible.
+runPrisma(["migrate", "deploy"], { allowFail: true });
+
+console.log("Ensuring admin@sms.local login...");
+run(process.execPath, [ensureAdminScript]);
 
 console.log("Starting API:", entry);
 run(process.execPath, [entry]);

@@ -54,6 +54,23 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
         message: "Record not found",
       });
     }
+    // Missing column/table usually means migrations have not finished applying.
+    if (err.code === "P2021" || err.code === "P2022") {
+      console.error("Prisma schema mismatch:", err.code, err.message);
+      return res.status(503).json({
+        success: false,
+        message: "Database schema is updating. Please retry in a moment.",
+        code: err.code,
+      });
+    }
+  }
+
+  if (err instanceof Prisma.PrismaClientInitializationError) {
+    console.error(err);
+    return res.status(503).json({
+      success: false,
+      message: "Database connection unavailable. Please retry shortly.",
+    });
   }
 
   console.error(err);

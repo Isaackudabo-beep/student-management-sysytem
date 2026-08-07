@@ -40,7 +40,10 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
 
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
-      include: { student: true, teacher: true },
+      include: {
+        student: { select: { id: true } },
+        teacher: { select: { id: true } },
+      },
     });
 
     if (!user) {

@@ -28,14 +28,23 @@ function publicUser(user: {
 export async function login(email: string, password: string, expectedRole: Role) {
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase() },
-    include: { student: true, teacher: true },
+    // Only load relation ids — avoids SELECT of new Student columns if migrate lags.
+    include: {
+      student: { select: { id: true } },
+      teacher: { select: { id: true } },
+    },
   });
 
   if (!user) {
     throw new AppError(401, "Invalid email or password");
   }
 
-  const valid = await bcrypt.compare(password, user.passwordHash);
+  let valid = false;
+  try {
+    valid = await bcrypt.compare(password, user.passwordHash);
+  } catch {
+    throw new AppError(401, "Invalid email or password");
+  }
   if (!valid) {
     throw new AppError(401, "Invalid email or password");
   }
@@ -59,7 +68,10 @@ export async function login(email: string, password: string, expectedRole: Role)
 export async function getMe(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: { student: true, teacher: true },
+    include: {
+      student: { select: { id: true } },
+      teacher: { select: { id: true } },
+    },
   });
 
   if (!user) {
