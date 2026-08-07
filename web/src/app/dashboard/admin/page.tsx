@@ -3,12 +3,18 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
-import { Card, Stat } from "@/components/ui";
+import { BarChart, Card, Stat } from "@/components/ui";
 import { api, ApiRequestError } from "@/lib/api";
 import type { Announcement } from "@/lib/types";
 
 type AdminDash = {
   counts: Record<string, number | null>;
+  charts?: {
+    overallPassRate: number;
+    passRateByClass: Array<{ className: string; passRate: number; scored: number }>;
+    studentPopulation: Array<{ className: string; count: number }>;
+    teacherCount: number;
+  };
   gradeDistribution?: Array<{ grade: string; count: number }>;
   recentActivities?: Array<{ type: string; at: string; summary: string }>;
   quickActions?: Array<{ label: string; href: string }>;
@@ -46,12 +52,58 @@ export default function AdminDashboardPage() {
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <Card>
               <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
+                Overall school pass rate
+              </h2>
+              <p className="mt-4 font-[family-name:var(--font-display)] text-5xl font-semibold text-brand">
+                {data.charts?.overallPassRate ?? 0}%
+              </p>
+              <p className="mt-2 text-sm text-muted">Based on live scores (pass ≥ 40 total).</p>
+            </Card>
+            <Card>
+              <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
+                Teacher count
+              </h2>
+              <p className="mt-4 font-[family-name:var(--font-display)] text-5xl font-semibold">
+                {data.charts?.teacherCount ?? data.counts.teachers ?? 0}
+              </p>
+            </Card>
+          </div>
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <Card>
+              <h2 className="mb-4 font-[family-name:var(--font-display)] text-xl font-semibold">
+                Pass rate by class
+              </h2>
+              <BarChart
+                valueSuffix="%"
+                items={(data.charts?.passRateByClass ?? []).map((c) => ({
+                  label: c.className,
+                  value: c.passRate,
+                }))}
+              />
+            </Card>
+            <Card>
+              <h2 className="mb-4 font-[family-name:var(--font-display)] text-xl font-semibold">
+                Student population
+              </h2>
+              <BarChart
+                items={(data.charts?.studentPopulation ?? []).map((c) => ({
+                  label: c.className,
+                  value: c.count,
+                }))}
+              />
+            </Card>
+          </div>
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <Card>
+              <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
                 Quick actions
               </h2>
               <div className="mt-4 flex flex-wrap gap-2">
                 {(data.quickActions ?? []).map((a) => (
                   <Link
-                    key={a.href}
+                    key={a.href + a.label}
                     href={a.href}
                     className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white"
                   >
@@ -63,7 +115,7 @@ export default function AdminDashboardPage() {
 
             <Card>
               <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
-                Notifications
+                Recent notifications
               </h2>
               <ul className="mt-4 space-y-3">
                 {(data.notifications ?? []).map((n) => (
@@ -82,7 +134,10 @@ export default function AdminDashboardPage() {
             </h2>
             <ul className="mt-4 space-y-2">
               {(data.recentActivities ?? []).map((a, idx) => (
-                <li key={`${a.type}-${idx}`} className="flex justify-between gap-4 border-b border-line py-2 text-sm">
+                <li
+                  key={`${a.type}-${idx}`}
+                  className="flex justify-between gap-4 border-b border-line py-2 text-sm"
+                >
                   <span>{a.summary}</span>
                   <span className="shrink-0 text-muted">{new Date(a.at).toLocaleString()}</span>
                 </li>

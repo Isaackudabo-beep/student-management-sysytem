@@ -12,6 +12,7 @@ async function main() {
   await prisma.announcement.deleteMany();
   await prisma.passwordResetToken.deleteMany();
   await prisma.score.deleteMany();
+  await prisma.resultArchive.deleteMany();
   await prisma.enrollment.deleteMany();
   await prisma.teacherSubject.deleteMany();
   await prisma.subject.deleteMany();
@@ -146,6 +147,7 @@ async function main() {
         studentId: studentUser.student!.id,
         subjectId: subject.id,
         session: SESSION,
+        term: "FIRST",
       },
     });
   }

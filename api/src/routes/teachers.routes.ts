@@ -1,13 +1,16 @@
-// Purpose: Teacher HTTP routes + assign teacher to subject.
+// Purpose: Teacher HTTP routes + assign / unassign subjects.
 import { Router } from "express";
 import { authenticate, authorize } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import {
   assignTeacherSchema,
+  assignTeacherSubjectsSchema,
   createTeacherSchema,
   searchQuerySchema,
+  updateTeacherSchema,
 } from "../validators/schemas.js";
 import * as teacherService from "../services/teacher.service.js";
+import { z } from "zod";
 
 const router = Router();
 
@@ -22,6 +25,20 @@ router.get("/", authorize("ADMIN"), validate(searchQuerySchema, "query"), async 
   }
 });
 
+router.get(
+  "/unassigned-subjects",
+  authorize("ADMIN"),
+  validate(z.object({ session: z.string().min(4) }), "query"),
+  async (req, res, next) => {
+    try {
+      const data = await teacherService.listUnassignedSubjects(String(req.query.session));
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 router.post("/", authorize("ADMIN"), validate(createTeacherSchema), async (req, res, next) => {
   try {
     const teacher = await teacherService.createTeacher(req.body);
@@ -31,7 +48,6 @@ router.post("/", authorize("ADMIN"), validate(createTeacherSchema), async (req, 
   }
 });
 
-// Static path before /:id so "assign-subject" is never captured as an id.
 router.post(
   "/assign-subject",
   authorize("ADMIN"),
@@ -46,9 +62,41 @@ router.post(
   }
 );
 
+router.post(
+  "/assign-subjects",
+  authorize("ADMIN"),
+  validate(assignTeacherSubjectsSchema),
+  async (req, res, next) => {
+    try {
+      const data = await teacherService.assignTeacherSubjects(req.body);
+      res.status(201).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.delete("/assignments/:assignmentId", authorize("ADMIN"), async (req, res, next) => {
+  try {
+    const data = await teacherService.removeTeacherSubject(req.params.assignmentId);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/:id", authorize("ADMIN"), async (req, res, next) => {
   try {
     const teacher = await teacherService.getTeacherById(req.params.id);
+    res.json({ success: true, data: teacher });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch("/:id", authorize("ADMIN"), validate(updateTeacherSchema), async (req, res, next) => {
+  try {
+    const teacher = await teacherService.updateTeacher(req.params.id, req.body);
     res.json({ success: true, data: teacher });
   } catch (error) {
     next(error);

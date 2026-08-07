@@ -7,6 +7,8 @@ const phoneSchema = z
   .max(20, "Phone number is too long")
   .regex(/^[0-9+\-\s()]+$/, "Invalid phone number");
 
+export const termSchema = z.enum(["FIRST", "SECOND", "THIRD"]);
+
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
@@ -29,7 +31,7 @@ export const forgotPasswordSchema = z.object({
 
 export const createSchoolClassSchema = z.object({
   name: z.string().min(2).max(20),
-  level: z.string().min(2).max(10),
+  level: z.enum(["JSS1", "JSS2", "JSS3", "SS1", "SS2", "SS3"]),
   arm: z.string().max(5).optional(),
 });
 
@@ -51,6 +53,7 @@ export const createStudentSchema = z.object({
   department: z.string().min(1).default("General"),
   classId: z.string().min(1),
   session: z.string().min(4),
+  term: termSchema.default("FIRST"),
   subjectIds: z.array(z.string().min(1)).min(5).max(11),
 });
 
@@ -77,6 +80,14 @@ export const createTeacherSchema = z.object({
   department: z.string().min(1),
 });
 
+export const updateTeacherSchema = z.object({
+  firstName: z.string().min(1).optional(),
+  lastName: z.string().min(1).optional(),
+  phone: z.string().optional().nullable(),
+  department: z.string().min(1).optional(),
+  email: z.string().email().optional(),
+});
+
 export const createSubjectSchema = z.object({
   code: z.string().min(2).max(20),
   title: z.string().min(2),
@@ -93,10 +104,17 @@ export const assignTeacherSchema = z.object({
   session: z.string().min(4),
 });
 
+export const assignTeacherSubjectsSchema = z.object({
+  teacherId: z.string().min(1),
+  subjectIds: z.array(z.string().min(1)).min(1),
+  session: z.string().min(4),
+});
+
 export const createEnrollmentSchema = z.object({
   studentId: z.string().min(1),
   subjectId: z.string().min(1),
   session: z.string().min(4),
+  term: termSchema.default("FIRST"),
 });
 
 export const upsertScoreSchema = z.object({
@@ -108,11 +126,24 @@ export const upsertScoreSchema = z.object({
 export const createAnnouncementSchema = z.object({
   title: z.string().min(3).max(120),
   body: z.string().min(5).max(2000),
-  audience: z.enum(["ALL", "STUDENTS", "TEACHERS", "ADMINS"]),
+  audience: z.enum(["ALL", "STUDENTS", "TEACHERS", "ADMINS", "CLASS", "USER"]),
+  targetClassId: z.string().min(1).optional().nullable(),
+  targetUserId: z.string().min(1).optional().nullable(),
   expiresAt: z.string().optional().nullable(),
 });
 
 export const updateAnnouncementSchema = createAnnouncementSchema.partial();
+
+export const closeTermSchema = z.object({
+  session: z.string().min(4),
+  term: termSchema,
+  clearEnrollments: z.boolean().optional(),
+});
+
+export const promoteStudentsSchema = z.object({
+  session: z.string().min(4),
+  term: termSchema.default("THIRD"),
+});
 
 export const searchQuerySchema = z.object({
   q: z.string().optional(),
@@ -120,6 +151,7 @@ export const searchQuerySchema = z.object({
   level: z.string().optional(),
   classId: z.string().optional(),
   session: z.string().optional(),
+  term: termSchema.optional(),
   studentId: z.string().optional(),
   subjectId: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),

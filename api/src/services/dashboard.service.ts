@@ -1,4 +1,4 @@
-// Purpose: Role-aware dashboard statistics for secondary school SMS.
+// Purpose: Role-aware dashboard statistics + chart metrics for secondary school SMS.
 import { AppError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import type { AuthUser } from "../middleware/auth.js";
@@ -17,6 +17,43 @@ export async function getDashboardStats(actor: AuthUser) {
       prisma.enrollment.count(),
       prisma.score.count(),
     ]);
+
+    const allScores = await prisma.score.findMany({
+      select: {
+        total: true,
+        grade: true,
+        enrollment: {
+          select: {
+            student: { select: { classId: true, schoolClass: { select: { name: true, level: true } } } },
+          },
+        },
+      },
+    });
+
+    const passCount = allScores.filter((s) => s.total >= 40).length;
+    const overallPassRate =
+      allScores.length > 0 ? Number(((passCount / allScores.length) * 100).toFixed(1)) : 0;
+
+    const byClassMap = new Map<string, { name: string; pass: number; total: number }>();
+    for (const s of allScores) {
+      const name = s.enrollment.student.schoolClass?.name ?? "Unknown";
+      const row = byClassMap.get(name) ?? { name, pass: 0, total: 0 };
+      row.total += 1;
+      if (s.total >= 40) row.pass += 1;
+      byClassMap.set(name, row);
+    }
+    const passRateByClass = [...byClassMap.values()]
+      .map((c) => ({
+        className: c.name,
+        passRate: c.total ? Number(((c.pass / c.total) * 100).toFixed(1)) : 0,
+        scored: c.total,
+      }))
+      .sort((a, b) => a.className.localeCompare(b.className));
+
+    const populationByClass = await prisma.schoolClass.findMany({
+      orderBy: [{ level: "asc" }, { name: "asc" }],
+      include: { _count: { select: { students: true } } },
+    });
 
     const [recentEnrollments, recentScores, recentAnnouncements] = await Promise.all([
       prisma.enrollment.findMany({
@@ -43,6 +80,15 @@ export async function getDashboardStats(actor: AuthUser) {
     return {
       role: actor.role,
       counts: { students, teachers, subjects, classes, enrollments, scores, unreadNotifications },
+      charts: {
+        overallPassRate,
+        passRateByClass,
+        studentPopulation: populationByClass.map((c) => ({
+          className: c.name,
+          count: c._count.students,
+        })),
+        teacherCount: teachers,
+      },
       gradeDistribution: gradeGroups.map((g) => ({ grade: g.grade, count: g._count.grade })),
       recentActivities: [
         ...recentEnrollments.map((e) => ({
@@ -66,9 +112,10 @@ export async function getDashboardStats(actor: AuthUser) {
       quickActions: [
         { label: "Register student", href: "/students" },
         { label: "Close term", href: "/term" },
+        { label: "Promote students", href: "/term" },
         { label: "Manage classes", href: "/classes" },
-        { label: "Post announcement", href: "/announcements" },
-        { label: "Assign teacher subject", href: "/teachers" },
+        { label: "Send notification", href: "/announcements" },
+        { label: "Manage teachers", href: "/teachers" },
       ],
       notifications: notifications.slice(0, 5),
     };
@@ -126,6 +173,7 @@ export async function getDashboardStats(actor: AuthUser) {
           subject: e.subject.code,
           className: e.student.schoolClass?.name,
           session: e.session,
+          term: e.term,
         })),
       notifications: notifications.slice(0, 5),
     };
@@ -142,7 +190,7 @@ export async function getDashboardStats(actor: AuthUser) {
     const enrollments = await prisma.enrollment.findMany({
       where: { studentId: actor.studentId },
       include: { score: true, subject: true },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ session: "desc" }, { term: "asc" }],
     });
 
     const graded = enrollments.filter((e) => e.score);
@@ -151,14 +199,26 @@ export async function getDashboardStats(actor: AuthUser) {
         ? Number((graded.reduce((s, e) => s + (e.score?.total ?? 0), 0) / graded.length).toFixed(2))
         : null;
 
+    const classDisplay =
+      student?.academicStatus === "REPEATING"
+        ? `Repeated · ${student.schoolClass.name}`
+        : student?.schoolClass.name ?? null;
+
     return {
       role: actor.role,
       profile: student
         ? {
             fullName: `${student.firstName} ${student.lastName}`,
             admissionNumber: student.admissionNumber,
-            className: student.schoolClass.name,
+            className: classDisplay,
             level: student.level,
+            academicStatus: student.academicStatus,
+            academicStatusLabel:
+              student.academicStatus === "REPEATING"
+                ? "Repeated"
+                : student.academicStatus === "PROMOTED"
+                  ? "Promoted"
+                  : "Active",
             phone: student.phone,
             parentName: student.parentName,
             parentPhone: student.parentPhone,
@@ -179,6 +239,7 @@ export async function getDashboardStats(actor: AuthUser) {
         code: e.subject.code,
         title: e.subject.title,
         session: e.session,
+        term: e.term,
         resultStatus: e.score ? "GRADED" : "AWAITING_RESULT",
         resultStatusLabel: e.score ? "Graded" : "Awaiting Result",
         assessment: e.score?.assessment ?? null,

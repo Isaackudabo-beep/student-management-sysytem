@@ -26,7 +26,7 @@ router.get("/inbox", async (req, res, next) => {
 
 router.post("/:id/read", async (req, res, next) => {
   try {
-    const data = await announcementService.markAnnouncementRead(req.params.id, req.user!);
+    const data = await announcementService.markRead(req.params.id, req.user!);
     res.json({ success: true, data });
   } catch (error) {
     next(error);

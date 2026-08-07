@@ -53,9 +53,12 @@ export async function upsertScore(
       where: { id: enrollment.score.id },
       data,
       include: {
-        enrollment: { include: { student: true, subject: true } },
+        enrollment: { include: { student: { include: { user: true } }, subject: true } },
         teacher: true,
       },
+    }).then(async (score) => {
+      await notifyScoreSaved(score, actor.id);
+      return score;
     });
   }
 
@@ -65,10 +68,40 @@ export async function upsertScore(
       ...data,
     },
     include: {
-      enrollment: { include: { student: true, subject: true } },
+      enrollment: { include: { student: { include: { user: true } }, subject: true } },
       teacher: true,
     },
+  }).then(async (score) => {
+    await notifyScoreSaved(score, actor.id);
+    return score;
   });
+}
+
+async function notifyScoreSaved(
+  score: {
+    total: number;
+    grade: string;
+    enrollment: {
+      student: { userId: string; firstName: string; lastName: string };
+      subject: { code: string; title: string };
+      session: string;
+      term: string;
+    };
+  },
+  actorId: string
+) {
+  try {
+    const { createSystemAnnouncement } = await import("./announcement.service.js");
+    await createSystemAnnouncement({
+      title: `Result published — ${score.enrollment.subject.code}`,
+      body: `Your score in ${score.enrollment.subject.title} (${score.enrollment.session}, ${score.enrollment.term}) is ${score.total} (${score.grade}).`,
+      audience: "USER",
+      createdById: actorId,
+      targetUserId: score.enrollment.student.userId,
+    });
+  } catch {
+    // Non-blocking notification
+  }
 }
 
 export async function listScores(params: {
@@ -76,6 +109,8 @@ export async function listScores(params: {
   studentId?: string;
   subjectId?: string;
   session?: string;
+  term?: "FIRST" | "SECOND" | "THIRD";
+  classId?: string;
   page: number;
   limit: number;
 }) {
@@ -92,11 +127,15 @@ export async function listScores(params: {
     studentId?: string;
     subjectId?: string;
     session?: string;
+    term?: "FIRST" | "SECOND" | "THIRD";
+    student?: { classId: string };
     OR?: Array<{ subjectId: string; session: string }>;
   } = {
     studentId: params.studentId,
     subjectId: params.subjectId,
     session: params.session,
+    term: params.term,
+    ...(params.classId ? { student: { classId: params.classId } } : {}),
   };
 
   if (actor.role === "TEACHER") {
@@ -159,7 +198,12 @@ export async function getStudentResults(studentId: string, actor: AuthUser) {
       subject: true,
       score: { include: { teacher: true } },
     },
-    orderBy: [{ session: "desc" }, { createdAt: "asc" }],
+    orderBy: [{ session: "desc" }, { term: "asc" }, { createdAt: "asc" }],
+  });
+
+  const archived = await prisma.resultArchive.findMany({
+    where: { studentId },
+    orderBy: [{ session: "desc" }, { term: "asc" }],
   });
 
   const scored = enrollments.filter((e) => e.score);
@@ -168,7 +212,12 @@ export async function getStudentResults(studentId: string, actor: AuthUser) {
       ? Number((scored.reduce((sum, e) => sum + (e.score?.total ?? 0), 0) / scored.length).toFixed(2))
       : null;
 
-  const sessions = [...new Set(enrollments.map((e) => e.session))];
+  const sessions = [...new Set([...enrollments.map((e) => e.session), ...archived.map((a) => a.session)])];
+
+  const classDisplay =
+    student.academicStatus === "REPEATING"
+      ? `Repeated · ${student.schoolClass?.name ?? student.level}`
+      : student.schoolClass?.name ?? student.level;
 
   return {
     student: {
@@ -177,9 +226,23 @@ export async function getStudentResults(studentId: string, actor: AuthUser) {
       firstName: student.firstName,
       lastName: student.lastName,
       admissionNumber: student.admissionNumber,
-      className: student.schoolClass?.name ?? student.level,
+      className: classDisplay,
       level: student.level,
       department: student.department,
+      academicStatus: student.academicStatus,
+      academicStatusLabel:
+        student.academicStatus === "REPEATING"
+          ? "Repeated"
+          : student.academicStatus === "PROMOTED"
+            ? "Promoted"
+            : "Active",
+      parentName: student.parentName,
+      parentPhone: student.parentPhone,
+      address: student.address,
+      phone: student.phone,
+      email: student.email,
+      gender: student.gender,
+      dateOfBirth: student.dateOfBirth,
     },
     sessions,
     enrollments: enrollments.map((e) => ({
@@ -189,6 +252,7 @@ export async function getStudentResults(studentId: string, actor: AuthUser) {
       caScore: e.score?.assessment ?? null,
       examScore: e.score?.exam ?? null,
     })),
+    archivedResults: archived,
     summary: {
       enrolled: enrollments.length,
       graded: scored.length,

@@ -4,12 +4,18 @@ import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 
 export async function createClass(input: { name: string; level: string; arm?: string }) {
+  const level = input.level.toUpperCase();
+  const arm = input.arm?.trim() ? input.arm.toUpperCase() : undefined;
+  const name = input.name.trim().toUpperCase() || `${level}${arm ?? ""}`;
+
+  const existing = await prisma.schoolClass.findUnique({ where: { name } });
+  if (existing) {
+    throw new AppError(409, `Class ${name} already exists`);
+  }
+
   return prisma.schoolClass.create({
-    data: {
-      name: input.name.toUpperCase(),
-      level: input.level.toUpperCase(),
-      arm: input.arm?.toUpperCase(),
-    },
+    data: { name, level, arm },
+    include: { _count: { select: { students: true } } },
   });
 }
 

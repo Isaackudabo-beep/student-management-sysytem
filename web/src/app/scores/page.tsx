@@ -1,275 +1,323 @@
 "use client";
 
-// Purpose: Teacher score entry + Admin/Teacher score listing.
+// Purpose: Score entry organized by class → subject → students.
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
-import { Button, Card, ErrorText, Input, Label, Select } from "@/components/ui";
+import { Button, Card, ErrorText, Input, Label, Select, useToast } from "@/components/ui";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import type { Enrollment, Score } from "@/lib/types";
+import type { Enrollment, SchoolClass, Score, Term } from "@/lib/types";
+
+const TERMS: Term[] = ["FIRST", "SECOND", "THIRD"];
 
 export default function ScoresPage() {
   const { user } = useAuth();
-  const [scores, setScores] = useState<Score[]>([]);
-  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const [subjectFilter, setSubjectFilter] = useState("");
-  const [form, setForm] = useState({
-    enrollmentId: "",
-    assessment: "30",
-    exam: "45",
-  });
+  const toast = useToast();
+  const isTeacher = user?.role === "TEACHER";
 
-  const subjects = useMemo(() => {
-    const map = new Map<string, { id: string; code: string; title: string }>();
-    for (const e of enrollments) {
-      if (!e.subject) continue;
-      map.set(e.subject.id, {
-        id: e.subject.id,
-        code: e.subject.code,
-        title: e.subject.title,
-      });
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [scores, setScores] = useState<Score[]>([]);
+  const [classId, setClassId] = useState("");
+  const [subjectId, setSubjectId] = useState("");
+  const [session, setSession] = useState("2025/2026");
+  const [term, setTerm] = useState<Term>("FIRST");
+  const [rows, setRows] = useState<Record<string, { assessment: string; exam: string }>>({});
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  async function loadMeta() {
+    try {
+      const c = await api<{ success: true; data: SchoolClass[] }>("/api/classes?limit=100");
+      setClasses(c.data);
+      if (!classId && c.data[0]) setClassId(c.data[0].id);
+    } catch (err) {
+      setError(formatApiError(err, "Failed to load classes"));
     }
-    return [...map.values()].sort((a, b) => a.code.localeCompare(b.code));
+  }
+
+  async function loadEnrollments() {
+    if (!classId) return;
+    setLoading(true);
+    try {
+      const qs = new URLSearchParams({
+        limit: "200",
+        classId,
+        session,
+        term,
+        ...(subjectId ? { subjectId } : {}),
+      });
+      const [e, s] = await Promise.all([
+        api<{ success: true; data: Enrollment[] }>(`/api/enrollments?${qs}`),
+        api<{ success: true; data: Score[] }>(
+          `/api/scores?limit=100&classId=${classId}&session=${encodeURIComponent(session)}&term=${term}${
+            subjectId ? `&subjectId=${subjectId}` : ""
+          }`
+        ),
+      ]);
+      setEnrollments(e.data);
+      setScores(s.data);
+      const next: Record<string, { assessment: string; exam: string }> = {};
+      for (const en of e.data) {
+        next[en.id] = {
+          assessment: String(en.score?.assessment ?? 30),
+          exam: String(en.score?.exam ?? 45),
+        };
+      }
+      setRows(next);
+      setError("");
+    } catch (err) {
+      setError(formatApiError(err, "Failed to load scores"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadMeta();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    void loadEnrollments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classId, subjectId, session, term]);
+
+  const subjectsInClass = useMemo(() => {
+    const map = new Map<string, { id: string; label: string }>();
+    for (const e of enrollments) {
+      map.set(e.subject.id, { id: e.subject.id, label: `${e.subject.code} — ${e.subject.title}` });
+    }
+    return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
   }, [enrollments]);
 
-  const filteredEnrollments = useMemo(() => {
-    const rows = subjectFilter
-      ? enrollments.filter((e) => e.subject?.id === subjectFilter)
-      : enrollments;
+  const studentsForSubject = useMemo(() => {
+    if (!subjectId) return [];
+    return enrollments
+      .filter((e) => e.subject.id === subjectId)
+      .sort((a, b) =>
+        `${a.student.lastName}${a.student.firstName}`.localeCompare(
+          `${b.student.lastName}${b.student.firstName}`
+        )
+      );
+  }, [enrollments, subjectId]);
 
-    return [...rows].sort((a, b) => {
-      const awaitA = a.score ? 1 : 0;
-      const awaitB = b.score ? 1 : 0;
-      if (awaitA !== awaitB) return awaitA - awaitB;
-      const nameA = `${a.student?.lastName ?? ""} ${a.student?.firstName ?? ""}`;
-      const nameB = `${b.student?.lastName ?? ""} ${b.student?.firstName ?? ""}`;
-      return nameA.localeCompare(nameB);
-    });
-  }, [enrollments, subjectFilter]);
-
-  const selectedEnrollment = useMemo(
-    () => enrollments.find((e) => e.id === form.enrollmentId) ?? null,
-    [enrollments, form.enrollmentId]
-  );
-
-  async function load() {
-    try {
-      const scoreRes = await api<{ success: true; data: Score[] }>("/api/scores?limit=100");
-      setScores(scoreRes.data);
-      setError("");
-
-      if (user?.role === "TEACHER" || user?.role === "ADMIN") {
-        const enr = await api<{ success: true; data: Enrollment[] }>(
-          "/api/enrollments?limit=100"
-        );
-        const rows = Array.isArray(enr.data) ? enr.data : [];
-        setEnrollments(rows);
-
-        setForm((f) => {
-          const stillValid = rows.some((e) => e.id === f.enrollmentId);
-          if (stillValid) return f;
-          const awaiting = rows.find((e) => !e.score);
-          return { ...f, enrollmentId: awaiting?.id || rows[0]?.id || "" };
-        });
-
-        setSubjectFilter((prev) => {
-          if (prev && rows.some((e) => e.subject?.id === prev)) return prev;
-          return "";
-        });
-      }
-    } catch (err) {
-      setError(formatApiError(err, "Failed to load"));
-    }
-  }
-
-  useEffect(() => {
-    if (user) void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, user?.role]);
-
-  useEffect(() => {
-    if (!form.enrollmentId) return;
-    if (filteredEnrollments.some((e) => e.id === form.enrollmentId)) return;
-    const next = filteredEnrollments.find((e) => !e.score) ?? filteredEnrollments[0];
-    setForm((f) => ({ ...f, enrollmentId: next?.id || "" }));
-  }, [filteredEnrollments, form.enrollmentId]);
-
-  function onPickEnrollment(enrollmentId: string) {
-    const row = enrollments.find((e) => e.id === enrollmentId);
-    setForm({
-      enrollmentId,
-      assessment: row?.score ? String(row.score.assessment) : "30",
-      exam: row?.score ? String(row.score.exam) : "45",
-    });
-  }
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setMessage("");
-    setError("");
-    if (!form.enrollmentId) {
-      setError("Select a student enrollment first");
-      return;
-    }
+  async function saveOne(enrollmentId: string) {
+    const row = rows[enrollmentId];
+    if (!row) return;
+    setBusy(true);
     try {
       await api("/api/scores", {
         method: "POST",
         body: JSON.stringify({
-          enrollmentId: form.enrollmentId,
-          assessment: Number(form.assessment),
-          exam: Number(form.exam),
+          enrollmentId,
+          assessment: Number(row.assessment),
+          exam: Number(row.exam),
         }),
       });
-      setMessage("Score saved — total and grade computed on the server");
-      await load();
+      toast.success("Score saved");
+      await loadEnrollments();
     } catch (err) {
-      setError(formatApiError(err, "Save failed"));
+      const msg = formatApiError(err, "Save failed");
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveAll(e: FormEvent) {
+    e.preventDefault();
+    if (!isTeacher) return;
+    setBusy(true);
+    try {
+      for (const en of studentsForSubject) {
+        const row = rows[en.id];
+        if (!row) continue;
+        await api("/api/scores", {
+          method: "POST",
+          body: JSON.stringify({
+            enrollmentId: en.id,
+            assessment: Number(row.assessment),
+            exam: Number(row.exam),
+          }),
+        });
+      }
+      toast.success("All scores saved");
+      await loadEnrollments();
+    } catch (err) {
+      const msg = formatApiError(err, "Bulk save failed");
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
     <AppShell title="Scores">
-      {user?.role === "TEACHER" ? (
-        <Card className="mb-6">
-          <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
-            Enter / update score
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            Assessment /40 · Exam /60 · Grade calculated automatically.
-          </p>
-
-          {enrollments.length === 0 ? (
-            <p className="mt-4 text-sm text-muted">
-              No enrollments in your assigned subjects yet. Ask an admin to enroll students or
-              assign you to subjects.
-            </p>
-          ) : (
-            <form onSubmit={onSubmit} className="mt-4 grid gap-3 md:grid-cols-4">
-              <div>
-                <Label>Subject</Label>
-                <Select
-                  value={subjectFilter}
-                  onChange={(e) => setSubjectFilter(e.target.value)}
-                >
-                  <option value="">All subjects ({enrollments.length})</option>
-                  {subjects.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.code} — {s.title}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-
-              <div className="md:col-span-3">
-                <Label>Student enrollment</Label>
-                <Select
-                  value={form.enrollmentId}
-                  onChange={(e) => onPickEnrollment(e.target.value)}
-                >
-                  {filteredEnrollments.length === 0 ? (
-                    <option value="">No students for this subject</option>
-                  ) : (
-                    filteredEnrollments.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.student?.firstName} {e.student?.lastName}
-                        {e.student?.schoolClass?.name ? ` · ${e.student.schoolClass.name}` : ""}
-                        {" — "}
-                        {e.subject?.code}
-                        {e.score ? " · Graded" : " · Awaiting Result"}
-                      </option>
-                    ))
-                  )}
-                </Select>
-                {selectedEnrollment ? (
-                  <p className="mt-2 text-sm text-muted">
-                    {selectedEnrollment.student?.firstName}{" "}
-                    {selectedEnrollment.student?.lastName} · {selectedEnrollment.subject?.title} ·{" "}
-                    {selectedEnrollment.session}
-                    {selectedEnrollment.score
-                      ? ` · current ${selectedEnrollment.score.total} (${selectedEnrollment.score.grade})`
-                      : " · no score yet"}
-                  </p>
-                ) : null}
-              </div>
-
-              <div>
-                <Label>Assessment (0-40)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={40}
-                  value={form.assessment}
-                  onChange={(e) => setForm({ ...form, assessment: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label>Exam (0-60)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={60}
-                  value={form.exam}
-                  onChange={(e) => setForm({ ...form, exam: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="flex items-end md:col-span-2">
-                <Button type="submit" disabled={!form.enrollmentId} className="w-full md:w-auto">
-                  Save score
-                </Button>
-              </div>
-            </form>
-          )}
-          {message ? <p className="mt-3 text-sm text-success">{message}</p> : null}
-        </Card>
-      ) : null}
+      <Card className="mb-6">
+        <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
+          Enter scores by class
+        </h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <div>
+            <Label>Class</Label>
+            <Select value={classId} onChange={(e) => { setClassId(e.target.value); setSubjectId(""); }}>
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Session</Label>
+            <Input value={session} onChange={(e) => setSession(e.target.value)} />
+          </div>
+          <div>
+            <Label>Term</Label>
+            <Select value={term} onChange={(e) => setTerm(e.target.value as Term)}>
+              {TERMS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Subject</Label>
+            <Select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
+              <option value="">Select subject…</option>
+              {subjectsInClass.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+      </Card>
 
       <ErrorText>{error}</ErrorText>
 
-      <Card>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-line text-muted">
-                <th className="py-2 pr-4">Student</th>
-                <th className="py-2 pr-4">Subject</th>
-                <th className="py-2 pr-4">CA</th>
-                <th className="py-2 pr-4">Exam</th>
-                <th className="py-2 pr-4">Total</th>
-                <th className="py-2 pr-4">Grade</th>
-                <th className="py-2">Remark</th>
-              </tr>
-            </thead>
-            <tbody>
-              {scores.length === 0 ? (
-                <tr>
-                  <td className="py-4 text-muted" colSpan={7}>
-                    No scores to show yet.
-                  </td>
+      {loading ? (
+        <Card>
+          <p className="text-muted">Loading enrollments…</p>
+        </Card>
+      ) : !subjectId ? (
+        <Card>
+          <p className="text-muted">Select a class and subject to enter scores.</p>
+          {subjectsInClass.length === 0 ? (
+            <p className="mt-2 text-sm text-muted">No enrollments found for this class/session/term.</p>
+          ) : null}
+        </Card>
+      ) : (
+        <Card>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
+              Students ({studentsForSubject.length})
+            </h2>
+            {isTeacher ? (
+              <Button type="button" loading={busy} onClick={(e) => void saveAll(e as unknown as FormEvent)}>
+                Save all
+              </Button>
+            ) : (
+              <p className="text-sm text-muted">Teachers enter scores; admins can review the table below.</p>
+            )}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-line text-muted">
+                  <th className="py-2 pr-3">Student</th>
+                  <th className="py-2 pr-3">CA (40)</th>
+                  <th className="py-2 pr-3">Exam (60)</th>
+                  <th className="py-2 pr-3">Status</th>
+                  <th className="py-2">Action</th>
                 </tr>
-              ) : (
-                scores.map((s) => (
-                  <tr key={s.id} className="border-b border-line/70">
-                    <td className="py-3 pr-4">
-                      {s.enrollment?.student
-                        ? `${s.enrollment.student.firstName} ${s.enrollment.student.lastName}`
-                        : "—"}
+              </thead>
+              <tbody>
+                {studentsForSubject.map((en) => (
+                  <tr key={en.id} className="border-b border-line">
+                    <td className="py-3 pr-3 font-medium">
+                      {en.student.lastName}, {en.student.firstName}
                     </td>
-                    <td className="py-3 pr-4">{s.enrollment?.subject.code ?? "—"}</td>
-                    <td className="py-3 pr-4">{s.assessment}</td>
-                    <td className="py-3 pr-4">{s.exam}</td>
-                    <td className="py-3 pr-4 font-semibold">{s.total}</td>
-                    <td className="py-3 pr-4">{s.grade}</td>
-                    <td className="py-3">{s.remark}</td>
+                    <td className="py-3 pr-3">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={40}
+                        disabled={!isTeacher || busy}
+                        value={rows[en.id]?.assessment ?? ""}
+                        onChange={(e) =>
+                          setRows((r) => ({
+                            ...r,
+                            [en.id]: { ...r[en.id], assessment: e.target.value, exam: r[en.id]?.exam ?? "" },
+                          }))
+                        }
+                      />
+                    </td>
+                    <td className="py-3 pr-3">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={60}
+                        disabled={!isTeacher || busy}
+                        value={rows[en.id]?.exam ?? ""}
+                        onChange={(e) =>
+                          setRows((r) => ({
+                            ...r,
+                            [en.id]: {
+                              ...r[en.id],
+                              exam: e.target.value,
+                              assessment: r[en.id]?.assessment ?? "",
+                            },
+                          }))
+                        }
+                      />
+                    </td>
+                    <td className="py-3 pr-3">{en.resultStatusLabel ?? (en.score ? "Graded" : "Awaiting")}</td>
+                    <td className="py-3">
+                      {isTeacher ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          loading={busy}
+                          onClick={() => void saveOne(en.id)}
+                        >
+                          Save
+                        </Button>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      <Card className="mt-6">
+        <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">Recent scores</h2>
+        <ul className="mt-3 space-y-2 text-sm">
+          {scores.slice(0, 20).map((s) => (
+            <li key={s.id} className="flex justify-between border-b border-line py-2">
+              <span>
+                {s.enrollment?.student?.firstName} {s.enrollment?.student?.lastName} ·{" "}
+                {s.enrollment?.subject?.code}
+              </span>
+              <span className="font-semibold">
+                {s.total} ({s.grade})
+              </span>
+            </li>
+          ))}
+          {scores.length === 0 ? <li className="text-muted">No scores yet</li> : null}
+        </ul>
       </Card>
     </AppShell>
   );

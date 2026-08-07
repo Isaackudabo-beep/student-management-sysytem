@@ -58,6 +58,7 @@ export default function ResultsPage() {
   const [sessionFilter, setSessionFilter] = useState("");
   const [error, setError] = useState("");
   const [savedNote, setSavedNote] = useState("");
+  const [printMode, setPrintMode] = useState<"color" | "bw">("color");
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -181,9 +182,17 @@ export default function ResultsPage() {
     setSavedNote("CSV saved to your device.");
   }
 
-  function printReport() {
+  function printReport(mode: "color" | "bw" = printMode) {
+    document.body.dataset.printMode = mode;
     window.print();
-    setSavedNote("Use your browser’s print dialog and choose Save as PDF if you want a PDF file.");
+    window.setTimeout(() => {
+      delete document.body.dataset.printMode;
+    }, 500);
+    setSavedNote(
+      mode === "bw"
+        ? "Printing in black & white. Use Save as PDF in the print dialog if needed."
+        : "Printing in colour. Use Save as PDF in the print dialog if needed."
+    );
   }
 
   return (
@@ -214,8 +223,25 @@ export default function ResultsPage() {
                 <Button type="button" variant="secondary" onClick={saveCsvToDevice}>
                   Save CSV
                 </Button>
-                <Button type="button" variant="secondary" onClick={printReport}>
-                  Print / Save as PDF
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setPrintMode("color");
+                    printReport("color");
+                  }}
+                >
+                  Print colour
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setPrintMode("bw");
+                    printReport("bw");
+                  }}
+                >
+                  Print B&amp;W
                 </Button>
               </div>
             </div>

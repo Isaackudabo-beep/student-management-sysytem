@@ -28,6 +28,7 @@ const emptyForm = {
 export default function StudentsPage() {
   const { user } = useAuth();
   const [q, setQ] = useState("");
+  const [classFilter, setClassFilter] = useState("");
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [students, setStudents] = useState<Student[]>([]);
@@ -38,6 +39,8 @@ export default function StudentsPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [form, setForm] = useState(emptyForm);
+  const [profile, setProfile] = useState<Student | null>(null);
+  const [profileBusy, setProfileBusy] = useState(false);
 
   const selectedClass = useMemo(
     () => classes.find((c) => c.id === form.classId) ?? null,
@@ -50,16 +53,34 @@ export default function StudentsPage() {
     selectedSubjects.length <= 11 &&
     !subjectsLoading;
 
-  async function load(search = q, pageNum = page) {
+  async function load(search = q, pageNum = page, classId = classFilter) {
     try {
+      const qs = new URLSearchParams({
+        q: search,
+        page: String(pageNum),
+        limit: "20",
+        ...(classId ? { classId } : {}),
+      });
       const res = await api<{ success: true; data: Student[]; meta: { pages: number } }>(
-        `/api/students?q=${encodeURIComponent(search)}&page=${pageNum}&limit=20`
+        `/api/students?${qs}`
       );
       setStudents(res.data);
       setPages(res.meta.pages || 1);
       setError("");
     } catch (err) {
       setError(formatApiError(err, "Failed to load students"));
+    }
+  }
+
+  async function openProfile(id: string) {
+    setProfileBusy(true);
+    try {
+      const res = await api<{ success: true; data: Student }>(`/api/students/${id}`);
+      setProfile(res.data);
+    } catch (err) {
+      setError(formatApiError(err, "Failed to load profile"));
+    } finally {
+      setProfileBusy(false);
     }
   }
 
@@ -187,11 +208,26 @@ export default function StudentsPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
+          <Select
+            value={classFilter}
+            onChange={(e) => {
+              setClassFilter(e.target.value);
+              setPage(1);
+              void load(q, 1, e.target.value);
+            }}
+          >
+            <option value="">All classes</option>
+            {classes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
           <Button
             type="button"
             onClick={() => {
               setPage(1);
-              void load(q, 1);
+              void load(q, 1, classFilter);
             }}
           >
             Search
@@ -350,12 +386,30 @@ export default function StudentsPage() {
             {students.map((s) => (
               <tr key={s.id} className="border-b border-line">
                 <td className="py-3 font-semibold">
-                  {s.firstName} {s.lastName}
+                  <button
+                    type="button"
+                    className="text-left text-brand hover:underline"
+                    onClick={() => void openProfile(s.id)}
+                  >
+                    {s.firstName} {s.lastName}
+                  </button>
+                  {s.academicStatus === "REPEATING" ? (
+                    <span className="ml-2 rounded-full bg-danger/10 px-2 py-0.5 text-xs text-danger">
+                      Repeated
+                    </span>
+                  ) : null}
                 </td>
                 <td>{s.admissionNumber}</td>
                 <td>{s.schoolClass?.name ?? s.level}</td>
                 <td>{s._count?.enrollments ?? "—"}</td>
                 <td className="space-x-2">
+                  <button
+                    type="button"
+                    className="text-brand"
+                    onClick={() => void openProfile(s.id)}
+                  >
+                    Profile
+                  </button>
                   {user?.role === "ADMIN" && s.user?.id ? (
                     <button
                       type="button"
@@ -382,7 +436,7 @@ export default function StudentsPage() {
             onClick={() => {
               const next = page - 1;
               setPage(next);
-              void load(q, next);
+              void load(q, next, classFilter);
             }}
           >
             Previous
@@ -396,13 +450,119 @@ export default function StudentsPage() {
             onClick={() => {
               const next = page + 1;
               setPage(next);
-              void load(q, next);
+              void load(q, next, classFilter);
             }}
           >
             Next
           </Button>
         </div>
       </Card>
+
+      {profile || profileBusy ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4">
+          <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto">
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="font-[family-name:var(--font-display)] text-2xl font-semibold">
+                Student profile
+              </h2>
+              <Button type="button" variant="secondary" onClick={() => setProfile(null)}>
+                Close
+              </Button>
+            </div>
+            {profileBusy || !profile ? (
+              <p className="mt-4 text-muted">Loading profile…</p>
+            ) : (
+              <div className="mt-4 space-y-6">
+                <section>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">
+                    Personal information
+                  </h3>
+                  <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+                    <div>
+                      <dt className="text-muted">Name</dt>
+                      <dd className="font-semibold">
+                        {profile.firstName} {profile.lastName}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted">Admission</dt>
+                      <dd className="font-semibold">{profile.admissionNumber}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted">Class</dt>
+                      <dd className="font-semibold">
+                        {profile.classDisplay ?? profile.schoolClass?.name ?? profile.level}
+                        {profile.academicStatusLabel === "Repeated" ? (
+                          <span className="ml-2 text-danger">Repeated</span>
+                        ) : null}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted">Email / Phone</dt>
+                      <dd className="font-semibold">
+                        {profile.email} · {profile.phone}
+                      </dd>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <dt className="text-muted">Address</dt>
+                      <dd className="font-semibold">{profile.address}</dd>
+                    </div>
+                  </dl>
+                </section>
+                <section>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">
+                    Parent / Guardian
+                  </h3>
+                  <p className="mt-2 text-sm font-semibold">
+                    {profile.parentName} · {profile.parentPhone}
+                  </p>
+                </section>
+                <section>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">
+                    Current results
+                  </h3>
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {(profile.enrollments ?? []).map((e) => (
+                      <li key={e.id} className="flex justify-between border-b border-line py-1">
+                        <span>
+                          {e.subject.code} ({e.session}
+                          {e.term ? ` · ${e.term}` : ""})
+                        </span>
+                        <span className="font-semibold">
+                          {e.score ? `${e.score.total} (${e.score.grade})` : "Awaiting"}
+                        </span>
+                      </li>
+                    ))}
+                    {(profile.enrollments ?? []).length === 0 ? (
+                      <li className="text-muted">No current enrollments</li>
+                    ) : null}
+                  </ul>
+                </section>
+                <section>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">
+                    Previous (archived) results
+                  </h3>
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {(profile.archivedResults ?? []).map((a) => (
+                      <li key={a.id} className="flex justify-between border-b border-line py-1">
+                        <span>
+                          {a.subjectCode} ({a.session} · {a.term}) · {a.className}
+                        </span>
+                        <span className="font-semibold">
+                          {a.total} ({a.grade})
+                        </span>
+                      </li>
+                    ))}
+                    {(profile.archivedResults ?? []).length === 0 ? (
+                      <li className="text-muted">No archived results</li>
+                    ) : null}
+                  </ul>
+                </section>
+              </div>
+            )}
+          </Card>
+        </div>
+      ) : null}
     </AppShell>
   );
 }

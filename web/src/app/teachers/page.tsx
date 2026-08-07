@@ -1,110 +1,274 @@
 "use client";
 
-// Purpose: Teachers list + Admin create + assign teacher to subject.
-import { FormEvent, useEffect, useState } from "react";
+// Purpose: Complete teacher management — avatar, CRUD, multi-subject assign, unassigned list.
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
-import { Button, Card, ErrorText, Input, Label, Select } from "@/components/ui";
-import { api, ApiRequestError } from "@/lib/api";
+import { Avatar, Button, Card, ErrorText, Input, Label, Select, useToast } from "@/components/ui";
+import { api, ApiRequestError, formatApiError } from "@/lib/api";
 import type { Subject, Teacher } from "@/lib/types";
 
 export default function TeachersPage() {
+  const toast = useToast();
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [unassigned, setUnassigned] = useState<Subject[]>([]);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [session, setSession] = useState("2025/2026");
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
     email: "",
     password: "Password123!",
-    department: "Computer Science",
+    department: "Sciences",
     phone: "",
   });
   const [assign, setAssign] = useState({
     teacherId: "",
-    subjectId: "",
-    session: "2025/2026",
+    subjectIds: [] as string[],
   });
 
   async function load() {
     try {
-      const [t, s] = await Promise.all([
-        api<{ success: true; data: Teacher[] }>("/api/teachers?limit=50"),
-        api<{ success: true; data: Subject[] }>("/api/subjects?limit=100"),
+      const [t, s, u] = await Promise.all([
+        api<{ success: true; data: Teacher[] }>("/api/teachers?limit=100"),
+        api<{ success: true; data: Subject[] }>("/api/subjects?limit=200"),
+        api<{ success: true; data: Subject[] }>(
+          `/api/teachers/unassigned-subjects?session=${encodeURIComponent(session)}`
+        ),
       ]);
       setTeachers(t.data);
       setSubjects(s.data);
+      setUnassigned(u.data);
+      setError("");
       if (!assign.teacherId && t.data[0]) {
         setAssign((a) => ({ ...a, teacherId: t.data[0].id }));
       }
-      if (!assign.subjectId && s.data[0]) {
-        setAssign((a) => ({ ...a, subjectId: s.data[0].id }));
-      }
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Failed to load");
+      setError(formatApiError(err, "Failed to load teachers"));
     }
   }
 
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [session]);
+
+  const editing = useMemo(
+    () => teachers.find((t) => t.id === editingId) ?? null,
+    [teachers, editingId]
+  );
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
+    setBusy(true);
     try {
-      await api("/api/teachers", { method: "POST", body: JSON.stringify(form) });
-      setMessage("Teacher created");
+      if (editingId) {
+        await api(`/api/teachers/${editingId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            firstName: form.firstName,
+            lastName: form.lastName,
+            email: form.email,
+            phone: form.phone || null,
+            department: form.department,
+          }),
+        });
+        toast.success("Teacher updated");
+        setEditingId(null);
+      } else {
+        await api("/api/teachers", { method: "POST", body: JSON.stringify(form) });
+        toast.success("Teacher created");
+      }
+      setForm({
+        firstName: "",
+        lastName: "",
+        email: "",
+        password: "Password123!",
+        department: "Sciences",
+        phone: "",
+      });
       await load();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Create failed");
+      const msg = formatApiError(err, "Save failed");
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setBusy(false);
     }
   }
 
   async function onAssign(e: FormEvent) {
     e.preventDefault();
+    if (!assign.teacherId || assign.subjectIds.length === 0) {
+      toast.error("Select a teacher and at least one subject");
+      return;
+    }
+    setBusy(true);
     try {
-      await api("/api/teachers/assign-subject", {
+      await api("/api/teachers/assign-subjects", {
         method: "POST",
-        body: JSON.stringify(assign),
+        body: JSON.stringify({
+          teacherId: assign.teacherId,
+          subjectIds: assign.subjectIds,
+          session,
+        }),
       });
-      setMessage("Teacher assigned to subject");
+      toast.success("Subjects assigned");
+      setAssign((a) => ({ ...a, subjectIds: [] }));
       await load();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Assign failed");
+      const msg = formatApiError(err, "Assign failed");
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setBusy(false);
     }
+  }
+
+  async function removeAssignment(assignmentId: string) {
+    setBusy(true);
+    try {
+      await api(`/api/teachers/assignments/${assignmentId}`, { method: "DELETE" });
+      toast.success("Subject removed");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof ApiRequestError ? err.message : "Remove failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDelete(id: string) {
+    if (!confirm("Delete this teacher?")) return;
+    setBusy(true);
+    try {
+      await api(`/api/teachers/${id}`, { method: "DELETE" });
+      toast.success("Teacher deleted");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof ApiRequestError ? err.message : "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function startEdit(t: Teacher) {
+    setEditingId(t.id);
+    setForm({
+      firstName: t.firstName,
+      lastName: t.lastName,
+      email: t.email,
+      password: "",
+      department: t.department,
+      phone: t.phone ?? "",
+    });
+  }
+
+  function toggleSubject(id: string) {
+    setAssign((a) => ({
+      ...a,
+      subjectIds: a.subjectIds.includes(id)
+        ? a.subjectIds.filter((x) => x !== id)
+        : [...a.subjectIds, id],
+    }));
   }
 
   return (
     <AppShell title="Teachers">
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <div>
+          <Label>Session</Label>
+          <Input value={session} onChange={(e) => setSession(e.target.value)} />
+        </div>
+      </div>
+
       <div className="grid gap-6 xl:grid-cols-2">
         <Card>
           <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
-            Add teacher
+            {editing ? "Edit teacher" : "Add teacher"}
           </h2>
-          <form onSubmit={onCreate} className="mt-4 grid gap-3">
-            {(["firstName", "lastName", "email", "phone", "department", "password"] as const).map(
-              (field) => (
-                <div key={field}>
-                  <Label>{field}</Label>
-                  <Input
-                    value={form[field]}
-                    onChange={(e) => setForm({ ...form, [field]: e.target.value })}
-                    required={field !== "phone"}
-                    type={field === "email" ? "email" : "text"}
-                  />
-                </div>
-              )
-            )}
-            <Button type="submit">Create teacher</Button>
+          <form onSubmit={onCreate} className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label>First name</Label>
+              <Input
+                value={form.firstName}
+                onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <Label>Last name</Label>
+              <Input
+                value={form.lastName}
+                onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                required
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                required
+              />
+            </div>
+            {!editing ? (
+              <div className="sm:col-span-2">
+                <Label>Temp password</Label>
+                <Input
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  required
+                />
+              </div>
+            ) : null}
+            <div>
+              <Label>Phone</Label>
+              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            </div>
+            <div>
+              <Label>Department</Label>
+              <Input
+                value={form.department}
+                onChange={(e) => setForm({ ...form, department: e.target.value })}
+                required
+              />
+            </div>
+            <div className="flex gap-2 sm:col-span-2">
+              <Button type="submit" loading={busy}>
+                {editing ? "Save changes" : "Create teacher"}
+              </Button>
+              {editing ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setEditingId(null);
+                    setForm({
+                      firstName: "",
+                      lastName: "",
+                      email: "",
+                      password: "Password123!",
+                      department: "Sciences",
+                      phone: "",
+                    });
+                  }}
+                >
+                  Cancel
+                </Button>
+              ) : null}
+            </div>
           </form>
         </Card>
 
         <Card>
           <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
-            Assign subject
+            Assign subjects
           </h2>
-          <form onSubmit={onAssign} className="mt-4 grid gap-3">
+          <form onSubmit={onAssign} className="mt-4 space-y-3">
             <div>
               <Label>Teacher</Label>
               <Select
@@ -118,94 +282,97 @@ export default function TeachersPage() {
                 ))}
               </Select>
             </div>
-            <div>
-              <Label>Subject</Label>
-              <Select
-                value={assign.subjectId}
-                onChange={(e) => setAssign({ ...assign, subjectId: e.target.value })}
-              >
-                {subjects.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.code} — {s.title}
-                  </option>
-                ))}
-              </Select>
+            <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-line p-3">
+              {subjects.map((s) => (
+                <label key={s.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={assign.subjectIds.includes(s.id)}
+                    onChange={() => toggleSubject(s.id)}
+                  />
+                  {s.code} — {s.title} ({s.level})
+                </label>
+              ))}
             </div>
-            <div>
-              <Label>Session</Label>
-              <Input
-                value={assign.session}
-                onChange={(e) => setAssign({ ...assign, session: e.target.value })}
-                required
-              />
-            </div>
-            <Button type="submit">Assign</Button>
+            <Button type="submit" loading={busy}>
+              Assign selected
+            </Button>
           </form>
         </Card>
       </div>
 
-      {message ? <p className="mt-4 text-sm text-success">{message}</p> : null}
       <ErrorText>{error}</ErrorText>
 
       <Card className="mt-6">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-line text-muted">
-                <th className="py-2 pr-4">Name</th>
-                <th className="py-2 pr-4">Email</th>
-                <th className="py-2 pr-4">Department</th>
-                <th className="py-2 pr-4">Subjects</th>
-                <th className="py-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {teachers.map((t) => (
-                <tr key={t.id} className="border-b border-line/70">
-                  <td className="py-3 pr-4">
+        <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
+          Unassigned subjects ({session})
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          Subjects not yet assigned to any teacher for this session.
+        </p>
+        <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {unassigned.length === 0 ? (
+            <li className="text-sm text-muted">All subjects are assigned.</li>
+          ) : (
+            unassigned.map((s) => (
+              <li key={s.id} className="rounded-xl border border-line px-3 py-2 text-sm">
+                <span className="font-semibold">{s.code}</span> · {s.title}
+                <span className="text-muted"> · {s.level}</span>
+              </li>
+            ))
+          )}
+        </ul>
+      </Card>
+
+      <Card className="mt-6">
+        <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">All teachers</h2>
+        <ul className="mt-4 divide-y divide-line">
+          {teachers.map((t) => (
+            <li key={t.id} className="flex flex-col gap-3 py-4 md:flex-row md:items-start md:justify-between">
+              <div className="flex gap-3">
+                <Avatar name={`${t.firstName} ${t.lastName}`} />
+                <div>
+                  <p className="font-semibold">
                     {t.firstName} {t.lastName}
-                  </td>
-                  <td className="py-3 pr-4">{t.email}</td>
-                  <td className="py-3 pr-4">{t.department}</td>
-                  <td className="py-3 pr-4">
-                    {(t.subjects ?? [])
-                      .map((a) => `${a.subject.code} (${a.session})`)
-                      .join(", ") || "—"}
-                  </td>
-                  <td className="py-3">
-                    {t.user?.id ? (
-                      <button
-                        type="button"
-                        className="text-brand"
-                        onClick={async () => {
-                          const temporaryPassword = prompt(
-                            "Temporary password (min 8 chars)",
-                            "Welcome123!"
-                          );
-                          if (!temporaryPassword) return;
-                          try {
-                            await api("/api/auth/admin/reset-password", {
-                              method: "POST",
-                              body: JSON.stringify({
-                                userId: t.user!.id,
-                                temporaryPassword,
-                              }),
-                            });
-                            setMessage("Temporary password set — teacher must change it on next login");
-                          } catch (err) {
-                            setError(err instanceof ApiRequestError ? err.message : "Reset failed");
-                          }
-                        }}
+                  </p>
+                  <p className="text-sm text-muted">{t.email}</p>
+                  <p className="text-sm text-muted">
+                    {t.phone || "No phone"} · {t.department}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(t.subjects ?? []).map((a) => (
+                      <span
+                        key={a.id}
+                        className="inline-flex items-center gap-1 rounded-full border border-line bg-white px-2 py-0.5 text-xs"
                       >
-                        Reset password
-                      </button>
+                        {a.subject.code} ({a.session})
+                        <button
+                          type="button"
+                          className="text-danger"
+                          disabled={busy}
+                          onClick={() => void removeAssignment(a.id)}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    {(t.subjects ?? []).length === 0 ? (
+                      <span className="text-xs text-muted">No subjects assigned</span>
                     ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="secondary" onClick={() => startEdit(t)}>
+                  Edit
+                </Button>
+                <Button type="button" variant="danger" loading={busy} onClick={() => void onDelete(t.id)}>
+                  Delete
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
       </Card>
     </AppShell>
   );

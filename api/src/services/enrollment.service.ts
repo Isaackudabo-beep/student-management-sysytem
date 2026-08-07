@@ -8,7 +8,9 @@ export async function createEnrollment(input: {
   studentId: string;
   subjectId: string;
   session: string;
+  term?: "FIRST" | "SECOND" | "THIRD";
 }) {
+  const term = input.term ?? "FIRST";
   const student = assertFound(
     await prisma.student.findUnique({ where: { id: input.studentId } }),
     "Student not found"
@@ -22,26 +24,34 @@ export async function createEnrollment(input: {
     throw new AppError(400, `Subject level ${subject.level} does not match student class level ${student.level}`);
   }
 
-  const count = await prisma.enrollment.count({ where: { studentId: input.studentId, session: input.session } });
+  const count = await prisma.enrollment.count({
+    where: { studentId: input.studentId, session: input.session, term },
+  });
   if (count >= 11) {
-    throw new AppError(400, "A student cannot have more than 11 subjects in a session");
+    throw new AppError(400, "A student cannot have more than 11 subjects in a term");
   }
 
   const existing = await prisma.enrollment.findUnique({
     where: {
-      studentId_subjectId_session: {
+      studentId_subjectId_session_term: {
         studentId: input.studentId,
         subjectId: input.subjectId,
         session: input.session,
+        term,
       },
     },
   });
   if (existing) {
-    throw new AppError(409, "This student is already enrolled in that subject for this session");
+    throw new AppError(409, "This student is already enrolled in that subject for this session/term");
   }
 
   return prisma.enrollment.create({
-    data: input,
+    data: {
+      studentId: input.studentId,
+      subjectId: input.subjectId,
+      session: input.session,
+      term,
+    },
     include: { student: true, subject: true },
   });
 }
@@ -51,6 +61,8 @@ export async function listEnrollments(
     studentId?: string;
     subjectId?: string;
     session?: string;
+    term?: "FIRST" | "SECOND" | "THIRD";
+    classId?: string;
     page: number;
     limit: number;
   },
@@ -84,6 +96,8 @@ export async function listEnrollments(
       params.studentId ? { studentId: params.studentId } : {},
       params.subjectId ? { subjectId: params.subjectId } : {},
       params.session ? { session: params.session } : {},
+      params.term ? { term: params.term } : {},
+      params.classId ? { student: { classId: params.classId } } : {},
     ],
   };
 

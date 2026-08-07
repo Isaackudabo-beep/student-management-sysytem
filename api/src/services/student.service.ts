@@ -19,6 +19,7 @@ type CreateStudentInput = {
   department?: string;
   classId: string;
   session: string;
+  term?: "FIRST" | "SECOND" | "THIRD";
   subjectIds: string[];
   fullName?: string;
 };
@@ -97,6 +98,7 @@ export async function createStudent(input: CreateStudentInput) {
         studentId: student.id,
         subjectId,
         session: input.session,
+        term: input.term ?? "FIRST",
       })),
     });
 
@@ -163,7 +165,7 @@ export async function listStudents(params: {
 }
 
 export async function getStudentById(id: string) {
-  return assertFound(
+  const student = assertFound(
     await prisma.student.findUnique({
       where: { id },
       include: {
@@ -171,11 +173,33 @@ export async function getStudentById(id: string) {
           select: { id: true, fullName: true, email: true, role: true, mustChangePassword: true },
         },
         schoolClass: true,
-        enrollments: { include: { subject: true, score: true } },
+        enrollments: {
+          include: { subject: true, score: true },
+          orderBy: [{ session: "desc" }, { term: "asc" }, { createdAt: "asc" }],
+        },
+        archivedResults: {
+          orderBy: [{ session: "desc" }, { term: "asc" }, { archivedAt: "desc" }],
+        },
       },
     }),
     "Student not found"
   );
+
+  const classLabel =
+    student.academicStatus === "REPEATING"
+      ? `Repeated · ${student.schoolClass.name}`
+      : student.schoolClass.name;
+
+  return {
+    ...student,
+    classDisplay: classLabel,
+    academicStatusLabel:
+      student.academicStatus === "REPEATING"
+        ? "Repeated"
+        : student.academicStatus === "PROMOTED"
+          ? "Promoted"
+          : "Active",
+  };
 }
 
 export async function updateStudent(

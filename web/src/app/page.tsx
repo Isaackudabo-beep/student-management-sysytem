@@ -63,20 +63,6 @@ export default function HomePage() {
           </Link>
         ))}
       </div>
-
-      <section id="demo" className="mt-16 grid gap-4 md:grid-cols-3">
-        {[
-          ["Admin", "admin@sms.local"],
-          ["Teacher", "teacher@sms.local"],
-          ["Student", "student@sms.local"],
-        ].map(([role, email]) => (
-          <div key={role} className="rounded-2xl border border-line bg-bg-elevated p-5 shadow-[var(--shadow)]">
-            <p className="text-sm uppercase tracking-wide text-muted">{role}</p>
-            <p className="mt-2 font-semibold">{email}</p>
-            <p className="mt-1 text-sm text-muted">Password123!</p>
-          </div>
-        ))}
-      </section>
     </main>
   );
 }

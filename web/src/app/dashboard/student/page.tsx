@@ -10,8 +10,10 @@ type StudentDash = {
   profile?: {
     fullName: string;
     admissionNumber: string;
-    className: string;
+    className: string | null;
     level: string;
+    academicStatus?: string;
+    academicStatusLabel?: string;
     phone: string;
     parentName: string;
     parentPhone: string;
@@ -81,7 +83,14 @@ export default function StudentDashboardPage() {
                   </div>
                   <div className="flex justify-between gap-4 border-b border-line py-2">
                     <dt className="text-muted">Class</dt>
-                    <dd className="font-semibold">{data.profile.className}</dd>
+                    <dd className="font-semibold">
+                      {data.profile.className}
+                      {data.profile.academicStatusLabel === "Repeated" ? (
+                        <span className="ml-2 rounded-full bg-danger/10 px-2 py-0.5 text-xs text-danger">
+                          Repeated
+                        </span>
+                      ) : null}
+                    </dd>
                   </div>
                   <div className="flex justify-between gap-4 border-b border-line py-2">
                     <dt className="text-muted">Parent / Guardian</dt>

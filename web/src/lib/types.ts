@@ -1,5 +1,7 @@
 // Purpose: Shared TypeScript types mirroring API responses.
 export type Role = "ADMIN" | "TEACHER" | "STUDENT";
+export type Term = "FIRST" | "SECOND" | "THIRD";
+export type AcademicStatus = "ACTIVE" | "PROMOTED" | "REPEATING";
 
 export type AuthUser = {
   id: string;
@@ -35,8 +37,29 @@ export type Student = {
   department: string;
   level: string;
   classId: string;
+  academicStatus?: AcademicStatus;
+  academicStatusLabel?: string;
+  classDisplay?: string;
   schoolClass?: SchoolClass;
   user?: { id: string; fullName: string; mustChangePassword?: boolean };
+  enrollments?: Array<{
+    id: string;
+    session: string;
+    term?: Term;
+    subject: Subject;
+    score?: Score | null;
+  }>;
+  archivedResults?: Array<{
+    id: string;
+    session: string;
+    term: Term;
+    subjectCode: string;
+    subjectTitle: string;
+    className: string;
+    total: number;
+    grade: string;
+    remark: string;
+  }>;
   _count?: { enrollments: number };
 };
 
@@ -47,8 +70,9 @@ export type Teacher = {
   email: string;
   phone?: string | null;
   department: string;
+  avatarInitials?: string;
   userId?: string;
-  user?: { id: string; mustChangePassword?: boolean };
+  user?: { id: string; mustChangePassword?: boolean; fullName?: string };
   subjects?: Array<{
     id: string;
     session: string;
@@ -68,6 +92,7 @@ export type Subject = {
 export type Enrollment = {
   id: string;
   session: string;
+  term?: Term;
   student: Student;
   subject: Subject;
   score?: Score | null;
@@ -95,4 +120,6 @@ export type Announcement = {
   expiresAt?: string | null;
   read?: boolean;
   createdBy?: string;
+  targetClass?: string | null;
+  targetUser?: string | null;
 };

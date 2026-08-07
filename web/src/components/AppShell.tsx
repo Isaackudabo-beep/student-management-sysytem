@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import clsx from "clsx";
 import { dashboardPath, useAuth } from "@/lib/auth";
+import { NotificationBell } from "@/components/NotificationBell";
 import type { Role } from "@/lib/types";
 
 const NAV: Array<{ href: string; label: string; roles: Role[] }> = [
@@ -17,7 +18,7 @@ const NAV: Array<{ href: string; label: string; roles: Role[] }> = [
   { href: "/teachers", label: "Teachers", roles: ["ADMIN"] },
   { href: "/subjects", label: "Subjects", roles: ["ADMIN", "TEACHER"] },
   { href: "/enrollments", label: "Enrollments", roles: ["ADMIN"] },
-  { href: "/term", label: "Close Term", roles: ["ADMIN"] },
+  { href: "/term", label: "Session", roles: ["ADMIN"] },
   { href: "/scores", label: "Scores", roles: ["ADMIN", "TEACHER"] },
   { href: "/announcements", label: "Announcements", roles: ["ADMIN"] },
   { href: "/results", label: "My Results", roles: ["STUDENT"] },
@@ -128,6 +129,7 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
               </h1>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <NotificationBell />
               <div className="flex flex-wrap gap-2 md:hidden">
                 {links.map((link) => (
                   <Link
