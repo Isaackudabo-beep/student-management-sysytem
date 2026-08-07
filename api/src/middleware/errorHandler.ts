@@ -54,12 +54,12 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
         message: "Record not found",
       });
     }
-    // Missing column/table usually means migrations have not finished applying.
+    // Missing column/table — log clearly; do not block the UI with a permanent "updating" banner.
     if (err.code === "P2021" || err.code === "P2022") {
-      console.error("Prisma schema mismatch:", err.code, err.message);
-      return res.status(503).json({
+      console.error("Prisma schema mismatch:", err.code, err.meta, err.message);
+      return res.status(500).json({
         success: false,
-        message: "Database schema is updating. Please retry in a moment.",
+        message: "A database field is missing. Migrations may need to finish — refresh shortly.",
         code: err.code,
       });
     }

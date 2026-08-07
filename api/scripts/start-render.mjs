@@ -10,14 +10,8 @@ process.chdir(apiRoot);
 
 const entry = path.join(apiRoot, "dist", "index.js");
 const buildScript = path.join(apiRoot, "scripts", "build.mjs");
+const ensureSchemaScript = path.join(apiRoot, "scripts", "ensure-schema.mjs");
 const ensureAdminScript = path.join(apiRoot, "scripts", "ensure-admin.mjs");
-const ensureSql = path.join(
-  apiRoot,
-  "prisma",
-  "migrations",
-  "20260807180000_ensure_schema_idempotent",
-  "migration.sql"
-);
 const prismaBin = path.join(
   apiRoot,
   "node_modules",
@@ -26,11 +20,11 @@ const prismaBin = path.join(
 );
 const prismaCliJs = path.join(apiRoot, "node_modules", "prisma", "build", "index.js");
 
-function run(command, args, { shell = false, allowFail = false } = {}) {
+function run(command, args, { shell = false, allowFail = false, env = process.env } = {}) {
   console.log(`> ${command} ${args.join(" ")}`);
   const result = spawnSync(command, args, {
     stdio: "inherit",
-    env: process.env,
+    env,
     cwd: apiRoot,
     shell,
   });
@@ -46,13 +40,18 @@ function run(command, args, { shell = false, allowFail = false } = {}) {
 }
 
 function runPrisma(args, opts = {}) {
+  const env = {
+    ...process.env,
+    // Neon DDL/migrations need the direct (non-pooled) URL when available.
+    DATABASE_URL: process.env.DIRECT_URL || process.env.DATABASE_URL,
+  };
   if (fs.existsSync(prismaBin)) {
-    return run(prismaBin, args, { shell: process.platform === "win32", ...opts });
+    return run(prismaBin, args, { shell: process.platform === "win32", env, ...opts });
   }
   if (fs.existsSync(prismaCliJs)) {
-    return run(process.execPath, [prismaCliJs, ...args], opts);
+    return run(process.execPath, [prismaCliJs, ...args], { env, ...opts });
   }
-  return run("npx", ["prisma", ...args], { shell: true, ...opts });
+  return run("npx", ["prisma", ...args], { shell: true, env, ...opts });
 }
 
 if (!fs.existsSync(entry)) {
@@ -73,12 +72,9 @@ if (!process.env.DATABASE_URL) {
 console.log("Applying database migrations (prisma migrate deploy)...");
 runPrisma(["migrate", "deploy"], { allowFail: true });
 
-if (fs.existsSync(ensureSql)) {
-  console.log("Ensuring schema columns/enums (idempotent SQL)...");
-  runPrisma(["db", "execute", "--file", ensureSql], { allowFail: false });
-}
+console.log("Ensuring schema via DIRECT_URL (idempotent DDL)...");
+run(process.execPath, [ensureSchemaScript], { allowFail: false });
 
-// Record any remaining pending migrations when possible.
 runPrisma(["migrate", "deploy"], { allowFail: true });
 
 console.log("Ensuring admin@sms.local login...");

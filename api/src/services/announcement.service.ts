@@ -37,17 +37,32 @@ export async function createAnnouncement(
     await assertFound(await prisma.user.findUnique({ where: { id: input.targetUserId } }), "User not found");
   }
 
-  return prisma.announcement.create({
-    data: {
-      title: input.title,
-      body: input.body,
-      audience: input.audience,
-      createdById: actor.id,
-      targetClassId: input.targetClassId ?? null,
-      targetUserId: input.targetUserId ?? null,
-      expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
-    },
-  });
+  try {
+    return await prisma.announcement.create({
+      data: {
+        title: input.title,
+        body: input.body,
+        audience: input.audience,
+        createdById: actor.id,
+        targetClassId: input.targetClassId ?? null,
+        targetUserId: input.targetUserId ?? null,
+        expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+      },
+    });
+  } catch {
+    if (input.audience === "CLASS" || input.audience === "USER") {
+      throw new AppError(503, "Notification targeting is not ready yet. Retry after migrations finish.");
+    }
+    return prisma.announcement.create({
+      data: {
+        title: input.title,
+        body: input.body,
+        audience: input.audience,
+        createdById: actor.id,
+        expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+      },
+    });
+  }
 }
 
 /** Internal helper for auto-notifications (results published, promotion, etc.). */
@@ -59,16 +74,28 @@ export async function createSystemAnnouncement(input: {
   targetClassId?: string | null;
   targetUserId?: string | null;
 }) {
-  return prisma.announcement.create({
-    data: {
-      title: input.title,
-      body: input.body,
-      audience: input.audience,
-      createdById: input.createdById,
-      targetClassId: input.targetClassId ?? null,
-      targetUserId: input.targetUserId ?? null,
-    },
-  });
+  try {
+    return await prisma.announcement.create({
+      data: {
+        title: input.title,
+        body: input.body,
+        audience: input.audience,
+        createdById: input.createdById,
+        targetClassId: input.targetClassId ?? null,
+        targetUserId: input.targetUserId ?? null,
+      },
+    });
+  } catch {
+    return prisma.announcement.create({
+      data: {
+        title: input.title,
+        body: input.body,
+        audience:
+          input.audience === "CLASS" || input.audience === "USER" ? "ALL" : input.audience,
+        createdById: input.createdById,
+      },
+    });
+  }
 }
 
 export async function listAnnouncementsAdmin(params: { page: number; limit: number }) {
@@ -78,27 +105,39 @@ export async function listAnnouncementsAdmin(params: { page: number; limit: numb
       skip: (params.page - 1) * params.limit,
       take: params.limit,
       orderBy: { publishedAt: "desc" },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        audience: true,
+        publishedAt: true,
+        expiresAt: true,
         createdBy: { select: { id: true, fullName: true, email: true } },
-        targetClass: { select: { id: true, name: true } },
-        targetUser: { select: { id: true, fullName: true, email: true, role: true } },
         _count: { select: { reads: true } },
       },
     }),
   ]);
 
   return {
-    data,
+    data: data.map((row) => ({ ...row, targetClass: null, targetUser: null })),
     meta: { total, page: params.page, limit: params.limit, pages: Math.ceil(total / params.limit) || 1 },
   };
 }
 
-async function visibleWhere(actor: AuthUser): Promise<Prisma.AnnouncementWhereInput> {
+async function visibleWhereLegacy(actor: AuthUser): Promise<Prisma.AnnouncementWhereInput> {
+  const now = new Date();
+  return {
+    audience: { in: baseAudienceForRole(actor.role) },
+    OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+  };
+}
+
+async function visibleWhereTargeted(actor: AuthUser): Promise<Prisma.AnnouncementWhereInput> {
   const now = new Date();
   const notExpired = { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] };
 
   const or: Prisma.AnnouncementWhereInput[] = [
-    { audience: { in: baseAudienceForRole(actor.role) }, targetClassId: null, targetUserId: null },
+    { audience: { in: baseAudienceForRole(actor.role) } },
     { audience: "USER", targetUserId: actor.id },
   ];
 
@@ -120,20 +159,18 @@ async function visibleWhere(actor: AuthUser): Promise<Prisma.AnnouncementWhereIn
 }
 
 export async function getInbox(actor: AuthUser) {
-  const where = await visibleWhere(actor);
-  const announcements = await prisma.announcement.findMany({
-    where,
-    orderBy: { publishedAt: "desc" },
-    take: 100,
-    include: {
-      reads: { where: { userId: actor.id }, select: { id: true, readAt: true } },
-      createdBy: { select: { fullName: true } },
-      targetClass: { select: { name: true } },
-      targetUser: { select: { fullName: true } },
-    },
-  });
-
-  return announcements.map((a) => ({
+  const mapRow = (a: {
+    id: string;
+    title: string;
+    body: string;
+    audience: string;
+    publishedAt: Date;
+    expiresAt: Date | null;
+    createdBy: { fullName: string };
+    reads: Array<{ id: string; readAt: Date }>;
+    targetClass?: { name: string } | null;
+    targetUser?: { fullName: string } | null;
+  }) => ({
     id: a.id,
     title: a.title,
     body: a.body,
@@ -145,7 +182,49 @@ export async function getInbox(actor: AuthUser) {
     createdBy: a.createdBy.fullName,
     read: a.reads.length > 0,
     readAt: a.reads[0]?.readAt ?? null,
-  }));
+  });
+
+  try {
+    const where = await visibleWhereTargeted(actor);
+    const announcements = await prisma.announcement.findMany({
+      where,
+      orderBy: { publishedAt: "desc" },
+      take: 100,
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        audience: true,
+        publishedAt: true,
+        expiresAt: true,
+        createdBy: { select: { fullName: true } },
+        reads: { where: { userId: actor.id }, select: { id: true, readAt: true } },
+        targetClass: { select: { name: true } },
+        targetUser: { select: { fullName: true } },
+      },
+    });
+    return announcements.map(mapRow);
+  } catch (err) {
+    // Older DBs without targeting columns/enums — still return core announcements.
+    console.warn("getInbox targeted query failed; using legacy inbox", err);
+    const where = await visibleWhereLegacy(actor);
+    const announcements = await prisma.announcement.findMany({
+      where,
+      orderBy: { publishedAt: "desc" },
+      take: 100,
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        audience: true,
+        publishedAt: true,
+        expiresAt: true,
+        createdBy: { select: { fullName: true } },
+        reads: { where: { userId: actor.id }, select: { id: true, readAt: true } },
+      },
+    });
+    return announcements.map((a) => mapRow({ ...a, targetClass: null, targetUser: null }));
+  }
 }
 
 export async function getUnreadCount(actor: AuthUser) {
@@ -155,7 +234,10 @@ export async function getUnreadCount(actor: AuthUser) {
 
 export async function markRead(announcementId: string, actor: AuthUser) {
   await assertFound(
-    await prisma.announcement.findUnique({ where: { id: announcementId } }),
+    await prisma.announcement.findUnique({
+      where: { id: announcementId },
+      select: { id: true },
+    }),
     "Announcement not found"
   );
 
@@ -171,7 +253,10 @@ export async function markRead(announcementId: string, actor: AuthUser) {
 }
 
 export async function deleteAnnouncement(id: string) {
-  await assertFound(await prisma.announcement.findUnique({ where: { id } }), "Announcement not found");
+  await assertFound(
+    await prisma.announcement.findUnique({ where: { id }, select: { id: true } }),
+    "Announcement not found"
+  );
   await prisma.announcement.delete({ where: { id } });
   return { message: "Announcement deleted" };
 }

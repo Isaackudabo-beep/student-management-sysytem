@@ -24,19 +24,48 @@ type AdminDash = {
 export default function AdminDashboardPage() {
   const [data, setData] = useState<AdminDash | null>(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api<{ success: true; data: AdminDash }>("/api/dashboard")
-      .then((res) => setData(res.data))
-      .catch((err) => setError(err instanceof ApiRequestError ? err.message : "Failed to load"));
+    let cancelled = false;
+    let attempts = 0;
+
+    async function load() {
+      attempts += 1;
+      try {
+        const res = await api<{ success: true; data: AdminDash }>("/api/dashboard");
+        if (cancelled) return;
+        setData(res.data);
+        setError("");
+        setLoading(false);
+      } catch (err) {
+        if (cancelled) return;
+        const message = err instanceof ApiRequestError ? err.message : "Failed to load";
+        setError(message);
+        // Auto-retry a few times while migrations settle after deploy.
+        if (attempts < 5) {
+          setLoading(true);
+          window.setTimeout(() => {
+            void load();
+          }, 2500);
+        } else {
+          setLoading(false);
+        }
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
     <AppShell title="Admin Dashboard">
       {error ? <p className="text-danger">{error}</p> : null}
-      {!data ? (
+      {loading && !data ? (
         <p className="text-muted">Loading statistics…</p>
-      ) : (
+      ) : data ? (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[
@@ -145,6 +174,8 @@ export default function AdminDashboardPage() {
             </ul>
           </Card>
         </>
+      ) : (
+        <p className="text-muted">Unable to load dashboard statistics.</p>
       )}
     </AppShell>
   );

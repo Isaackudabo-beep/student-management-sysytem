@@ -5,7 +5,12 @@ import type { AuthUser } from "../middleware/auth.js";
 import * as announcementService from "./announcement.service.js";
 
 export async function getDashboardStats(actor: AuthUser) {
-  const notifications = await announcementService.getInbox(actor);
+  let notifications: Awaited<ReturnType<typeof announcementService.getInbox>> = [];
+  try {
+    notifications = await announcementService.getInbox(actor);
+  } catch (err) {
+    console.warn("dashboard notifications unavailable", err);
+  }
   const unreadNotifications = notifications.filter((n) => !n.read).length;
 
   if (actor.role === "ADMIN") {
@@ -24,7 +29,12 @@ export async function getDashboardStats(actor: AuthUser) {
         grade: true,
         enrollment: {
           select: {
-            student: { select: { classId: true, schoolClass: { select: { name: true, level: true } } } },
+            student: {
+              select: {
+                classId: true,
+                schoolClass: { select: { name: true, level: true } },
+              },
+            },
           },
         },
       },
@@ -52,24 +62,41 @@ export async function getDashboardStats(actor: AuthUser) {
 
     const populationByClass = await prisma.schoolClass.findMany({
       orderBy: [{ level: "asc" }, { name: "asc" }],
-      include: { _count: { select: { students: true } } },
+      select: {
+        name: true,
+        _count: { select: { students: true } },
+      },
     });
 
     const [recentEnrollments, recentScores, recentAnnouncements] = await Promise.all([
       prisma.enrollment.findMany({
         take: 5,
         orderBy: { createdAt: "desc" },
-        include: { student: true, subject: true },
+        select: {
+          createdAt: true,
+          student: { select: { firstName: true, lastName: true } },
+          subject: { select: { code: true } },
+        },
       }),
       prisma.score.findMany({
         take: 5,
         orderBy: { updatedAt: "desc" },
-        include: {
-          enrollment: { include: { student: true, subject: true } },
-          teacher: true,
+        select: {
+          total: true,
+          updatedAt: true,
+          enrollment: {
+            select: {
+              student: { select: { firstName: true } },
+              subject: { select: { code: true } },
+            },
+          },
         },
       }),
-      prisma.announcement.findMany({ take: 5, orderBy: { publishedAt: "desc" } }),
+      prisma.announcement.findMany({
+        take: 5,
+        orderBy: { publishedAt: "desc" },
+        select: { title: true, publishedAt: true },
+      }),
     ]);
 
     const gradeGroups = await prisma.score.groupBy({
@@ -126,7 +153,11 @@ export async function getDashboardStats(actor: AuthUser) {
 
     const assignments = await prisma.teacherSubject.findMany({
       where: { teacherId: actor.teacherId },
-      include: { subject: true },
+      select: {
+        session: true,
+        subjectId: true,
+        subject: { select: { id: true, code: true, title: true, level: true } },
+      },
     });
 
     const assignmentKeys = assignments.map((a) => ({ subjectId: a.subjectId, session: a.session }));
@@ -135,7 +166,19 @@ export async function getDashboardStats(actor: AuthUser) {
         ? []
         : await prisma.enrollment.findMany({
             where: { OR: assignmentKeys },
-            include: { score: true, subject: true, student: { include: { schoolClass: true } } },
+            select: {
+              id: true,
+              session: true,
+              score: { select: { id: true } },
+              subject: { select: { code: true } },
+              student: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  schoolClass: { select: { name: true } },
+                },
+              },
+            },
           });
 
     const pendingScores = enrollments.filter((e) => !e.score).length;
@@ -173,7 +216,6 @@ export async function getDashboardStats(actor: AuthUser) {
           subject: e.subject.code,
           className: e.student.schoolClass?.name,
           session: e.session,
-          term: e.term,
         })),
       notifications: notifications.slice(0, 5),
     };
@@ -182,16 +224,112 @@ export async function getDashboardStats(actor: AuthUser) {
   if (actor.role === "STUDENT") {
     if (!actor.studentId) throw new AppError(403, "Student profile not found");
 
-    const student = await prisma.student.findUnique({
-      where: { id: actor.studentId },
-      include: { schoolClass: true },
-    });
+    let student: {
+      firstName: string;
+      lastName: string;
+      admissionNumber: string;
+      level: string;
+      phone: string;
+      parentName: string;
+      parentPhone: string;
+      address: string;
+      gender: string;
+      dateOfBirth: Date;
+      academicStatus?: string;
+      schoolClass: { name: string } | null;
+    } | null = null;
 
-    const enrollments = await prisma.enrollment.findMany({
-      where: { studentId: actor.studentId },
-      include: { score: true, subject: true },
-      orderBy: [{ session: "desc" }, { term: "asc" }],
-    });
+    try {
+      student = await prisma.student.findUnique({
+        where: { id: actor.studentId },
+        select: {
+          firstName: true,
+          lastName: true,
+          admissionNumber: true,
+          level: true,
+          phone: true,
+          parentName: true,
+          parentPhone: true,
+          address: true,
+          gender: true,
+          dateOfBirth: true,
+          academicStatus: true,
+          schoolClass: { select: { name: true } },
+        },
+      });
+    } catch {
+      student = await prisma.student.findUnique({
+        where: { id: actor.studentId },
+        select: {
+          firstName: true,
+          lastName: true,
+          admissionNumber: true,
+          level: true,
+          phone: true,
+          parentName: true,
+          parentPhone: true,
+          address: true,
+          gender: true,
+          dateOfBirth: true,
+          schoolClass: { select: { name: true } },
+        },
+      });
+    }
+
+    let enrollments: Array<{
+      id: string;
+      session: string;
+      term?: string;
+      subject: { code: string; title: string };
+      score: {
+        assessment: number;
+        exam: number;
+        total: number;
+        grade: string;
+        remark: string;
+      } | null;
+    }> = [];
+
+    try {
+      enrollments = await prisma.enrollment.findMany({
+        where: { studentId: actor.studentId },
+        select: {
+          id: true,
+          session: true,
+          term: true,
+          subject: { select: { code: true, title: true } },
+          score: {
+            select: {
+              assessment: true,
+              exam: true,
+              total: true,
+              grade: true,
+              remark: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+    } catch {
+      enrollments = await prisma.enrollment.findMany({
+        where: { studentId: actor.studentId },
+        select: {
+          id: true,
+          session: true,
+          subject: { select: { code: true, title: true } },
+          score: {
+            select: {
+              assessment: true,
+              exam: true,
+              total: true,
+              grade: true,
+              remark: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+    }
 
     const graded = enrollments.filter((e) => e.score);
     const average =
@@ -201,8 +339,8 @@ export async function getDashboardStats(actor: AuthUser) {
 
     const classDisplay =
       student?.academicStatus === "REPEATING"
-        ? `Repeated · ${student.schoolClass.name}`
-        : student?.schoolClass.name ?? null;
+        ? `Repeated · ${student.schoolClass?.name}`
+        : student?.schoolClass?.name ?? null;
 
     return {
       role: actor.role,
@@ -212,7 +350,7 @@ export async function getDashboardStats(actor: AuthUser) {
             admissionNumber: student.admissionNumber,
             className: classDisplay,
             level: student.level,
-            academicStatus: student.academicStatus,
+            academicStatus: student.academicStatus ?? "ACTIVE",
             academicStatusLabel:
               student.academicStatus === "REPEATING"
                 ? "Repeated"
@@ -239,7 +377,7 @@ export async function getDashboardStats(actor: AuthUser) {
         code: e.subject.code,
         title: e.subject.title,
         session: e.session,
-        term: e.term,
+        term: e.term ?? "FIRST",
         resultStatus: e.score ? "GRADED" : "AWAITING_RESULT",
         resultStatusLabel: e.score ? "Graded" : "Awaiting Result",
         assessment: e.score?.assessment ?? null,

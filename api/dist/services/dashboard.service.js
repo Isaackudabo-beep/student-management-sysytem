@@ -3,7 +3,13 @@ import { AppError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import * as announcementService from "./announcement.service.js";
 export async function getDashboardStats(actor) {
-    const notifications = await announcementService.getInbox(actor);
+    let notifications = [];
+    try {
+        notifications = await announcementService.getInbox(actor);
+    }
+    catch (err) {
+        console.warn("dashboard notifications unavailable", err);
+    }
     const unreadNotifications = notifications.filter((n) => !n.read).length;
     if (actor.role === "ADMIN") {
         const [students, teachers, subjects, classes, enrollments, scores] = await Promise.all([
@@ -20,7 +26,12 @@ export async function getDashboardStats(actor) {
                 grade: true,
                 enrollment: {
                     select: {
-                        student: { select: { classId: true, schoolClass: { select: { name: true, level: true } } } },
+                        student: {
+                            select: {
+                                classId: true,
+                                schoolClass: { select: { name: true, level: true } },
+                            },
+                        },
                     },
                 },
             },
@@ -45,23 +56,40 @@ export async function getDashboardStats(actor) {
             .sort((a, b) => a.className.localeCompare(b.className));
         const populationByClass = await prisma.schoolClass.findMany({
             orderBy: [{ level: "asc" }, { name: "asc" }],
-            include: { _count: { select: { students: true } } },
+            select: {
+                name: true,
+                _count: { select: { students: true } },
+            },
         });
         const [recentEnrollments, recentScores, recentAnnouncements] = await Promise.all([
             prisma.enrollment.findMany({
                 take: 5,
                 orderBy: { createdAt: "desc" },
-                include: { student: true, subject: true },
+                select: {
+                    createdAt: true,
+                    student: { select: { firstName: true, lastName: true } },
+                    subject: { select: { code: true } },
+                },
             }),
             prisma.score.findMany({
                 take: 5,
                 orderBy: { updatedAt: "desc" },
-                include: {
-                    enrollment: { include: { student: true, subject: true } },
-                    teacher: true,
+                select: {
+                    total: true,
+                    updatedAt: true,
+                    enrollment: {
+                        select: {
+                            student: { select: { firstName: true } },
+                            subject: { select: { code: true } },
+                        },
+                    },
                 },
             }),
-            prisma.announcement.findMany({ take: 5, orderBy: { publishedAt: "desc" } }),
+            prisma.announcement.findMany({
+                take: 5,
+                orderBy: { publishedAt: "desc" },
+                select: { title: true, publishedAt: true },
+            }),
         ]);
         const gradeGroups = await prisma.score.groupBy({
             by: ["grade"],
@@ -115,14 +143,30 @@ export async function getDashboardStats(actor) {
             throw new AppError(403, "Teacher profile not found");
         const assignments = await prisma.teacherSubject.findMany({
             where: { teacherId: actor.teacherId },
-            include: { subject: true },
+            select: {
+                session: true,
+                subjectId: true,
+                subject: { select: { id: true, code: true, title: true, level: true } },
+            },
         });
         const assignmentKeys = assignments.map((a) => ({ subjectId: a.subjectId, session: a.session }));
         const enrollments = assignmentKeys.length === 0
             ? []
             : await prisma.enrollment.findMany({
                 where: { OR: assignmentKeys },
-                include: { score: true, subject: true, student: { include: { schoolClass: true } } },
+                select: {
+                    id: true,
+                    session: true,
+                    score: { select: { id: true } },
+                    subject: { select: { code: true } },
+                    student: {
+                        select: {
+                            firstName: true,
+                            lastName: true,
+                            schoolClass: { select: { name: true } },
+                        },
+                    },
+                },
             });
         const pendingScores = enrollments.filter((e) => !e.score).length;
         const classes = [
@@ -156,7 +200,6 @@ export async function getDashboardStats(actor) {
                 subject: e.subject.code,
                 className: e.student.schoolClass?.name,
                 session: e.session,
-                term: e.term,
             })),
             notifications: notifications.slice(0, 5),
         };
@@ -164,22 +207,93 @@ export async function getDashboardStats(actor) {
     if (actor.role === "STUDENT") {
         if (!actor.studentId)
             throw new AppError(403, "Student profile not found");
-        const student = await prisma.student.findUnique({
-            where: { id: actor.studentId },
-            include: { schoolClass: true },
-        });
-        const enrollments = await prisma.enrollment.findMany({
-            where: { studentId: actor.studentId },
-            include: { score: true, subject: true },
-            orderBy: [{ session: "desc" }, { term: "asc" }],
-        });
+        let student = null;
+        try {
+            student = await prisma.student.findUnique({
+                where: { id: actor.studentId },
+                select: {
+                    firstName: true,
+                    lastName: true,
+                    admissionNumber: true,
+                    level: true,
+                    phone: true,
+                    parentName: true,
+                    parentPhone: true,
+                    address: true,
+                    gender: true,
+                    dateOfBirth: true,
+                    academicStatus: true,
+                    schoolClass: { select: { name: true } },
+                },
+            });
+        }
+        catch {
+            student = await prisma.student.findUnique({
+                where: { id: actor.studentId },
+                select: {
+                    firstName: true,
+                    lastName: true,
+                    admissionNumber: true,
+                    level: true,
+                    phone: true,
+                    parentName: true,
+                    parentPhone: true,
+                    address: true,
+                    gender: true,
+                    dateOfBirth: true,
+                    schoolClass: { select: { name: true } },
+                },
+            });
+        }
+        let enrollments = [];
+        try {
+            enrollments = await prisma.enrollment.findMany({
+                where: { studentId: actor.studentId },
+                select: {
+                    id: true,
+                    session: true,
+                    term: true,
+                    subject: { select: { code: true, title: true } },
+                    score: {
+                        select: {
+                            assessment: true,
+                            exam: true,
+                            total: true,
+                            grade: true,
+                            remark: true,
+                        },
+                    },
+                },
+                orderBy: { createdAt: "asc" },
+            });
+        }
+        catch {
+            enrollments = await prisma.enrollment.findMany({
+                where: { studentId: actor.studentId },
+                select: {
+                    id: true,
+                    session: true,
+                    subject: { select: { code: true, title: true } },
+                    score: {
+                        select: {
+                            assessment: true,
+                            exam: true,
+                            total: true,
+                            grade: true,
+                            remark: true,
+                        },
+                    },
+                },
+                orderBy: { createdAt: "asc" },
+            });
+        }
         const graded = enrollments.filter((e) => e.score);
         const average = graded.length > 0
             ? Number((graded.reduce((s, e) => s + (e.score?.total ?? 0), 0) / graded.length).toFixed(2))
             : null;
         const classDisplay = student?.academicStatus === "REPEATING"
-            ? `Repeated · ${student.schoolClass.name}`
-            : student?.schoolClass.name ?? null;
+            ? `Repeated · ${student.schoolClass?.name}`
+            : student?.schoolClass?.name ?? null;
         return {
             role: actor.role,
             profile: student
@@ -188,7 +302,7 @@ export async function getDashboardStats(actor) {
                     admissionNumber: student.admissionNumber,
                     className: classDisplay,
                     level: student.level,
-                    academicStatus: student.academicStatus,
+                    academicStatus: student.academicStatus ?? "ACTIVE",
                     academicStatusLabel: student.academicStatus === "REPEATING"
                         ? "Repeated"
                         : student.academicStatus === "PROMOTED"
@@ -214,7 +328,7 @@ export async function getDashboardStats(actor) {
                 code: e.subject.code,
                 title: e.subject.title,
                 session: e.session,
-                term: e.term,
+                term: e.term ?? "FIRST",
                 resultStatus: e.score ? "GRADED" : "AWAITING_RESULT",
                 resultStatusLabel: e.score ? "Graded" : "Awaiting Result",
                 assessment: e.score?.assessment ?? null,
