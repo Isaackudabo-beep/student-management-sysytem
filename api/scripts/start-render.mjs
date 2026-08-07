@@ -1,4 +1,4 @@
-// Purpose: Render start — build dist if missing, migrate, then boot dist/index.js.
+// Purpose: Render start — ensure dist exists, apply Prisma migrations, then boot API.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -10,15 +10,21 @@ process.chdir(apiRoot);
 
 const entry = path.join(apiRoot, "dist", "index.js");
 const buildScript = path.join(apiRoot, "scripts", "build.mjs");
-const prismaCli = path.join(apiRoot, "node_modules", "prisma", "build", "index.js");
+const prismaBin = path.join(
+  apiRoot,
+  "node_modules",
+  ".bin",
+  process.platform === "win32" ? "prisma.cmd" : "prisma"
+);
+const prismaCliJs = path.join(apiRoot, "node_modules", "prisma", "build", "index.js");
 
-function run(command, args) {
+function run(command, args, { shell = false } = {}) {
   console.log(`> ${command} ${args.join(" ")}`);
   const result = spawnSync(command, args, {
     stdio: "inherit",
     env: process.env,
     cwd: apiRoot,
-    shell: false,
+    shell,
   });
   if (result.error) {
     console.error(result.error);
@@ -42,14 +48,18 @@ if (!fs.existsSync(entry)) {
 }
 
 if (!process.env.DATABASE_URL) {
-  console.error("FATAL: DATABASE_URL is not set");
+  console.error("FATAL: DATABASE_URL is not set — cannot migrate or start");
   process.exit(1);
 }
 
-if (fs.existsSync(prismaCli)) {
-  run(process.execPath, [prismaCli, "migrate", "deploy"]);
+console.log("Applying database migrations (prisma migrate deploy)...");
+if (fs.existsSync(prismaBin)) {
+  run(prismaBin, ["migrate", "deploy"], { shell: process.platform === "win32" });
+} else if (fs.existsSync(prismaCliJs)) {
+  run(process.execPath, [prismaCliJs, "migrate", "deploy"]);
 } else {
-  console.warn("prisma CLI missing; skipping migrate deploy");
+  // Fallback used on Render when local bin shim is unavailable.
+  run("npx", ["prisma", "migrate", "deploy"], { shell: true });
 }
 
 console.log("Starting API:", entry);

@@ -5,8 +5,10 @@
 | Setting | Value |
 |---------|--------|
 | **Root Directory** | `api` |
-| **Build Command** | `npm install --include=dev && npm run build` |
+| **Build Command** | `npm install --include=dev && npx prisma generate && npm run build` |
 | **Start Command** | `npm run start:render` |
+
+`start:render` always runs **`npx prisma migrate deploy`** before booting the server so new schema changes apply automatically.
 
 Then **Manual Deploy → Clear build cache & deploy**.
 
