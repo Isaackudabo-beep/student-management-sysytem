@@ -2,55 +2,92 @@ import { AppError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import * as announcementService from "./announcement.service.js";
 export async function listActiveSessions() {
-    const [enrollmentSessions, assignmentSessions, archives] = await Promise.all([
-        prisma.enrollment.findMany({
-            distinct: ["session", "term"],
-            select: { session: true, term: true },
-            orderBy: [{ session: "desc" }, { term: "asc" }],
-        }),
-        prisma.teacherSubject.findMany({
-            distinct: ["session"],
-            select: { session: true },
-            orderBy: { session: "desc" },
-        }),
-        prisma.resultArchive.findMany({
-            distinct: ["session", "term"],
-            select: { session: true, term: true },
-        }),
-    ]);
-    const keys = new Map();
-    for (const row of enrollmentSessions) {
-        keys.set(`${row.session}|${row.term}`, { session: row.session, term: row.term });
-    }
-    for (const row of archives) {
-        const k = `${row.session}|${row.term}`;
-        if (!keys.has(k))
-            keys.set(k, { session: row.session, term: row.term });
-    }
-    for (const row of assignmentSessions) {
-        const k = `${row.session}|`;
-        if (![...keys.keys()].some((x) => x.startsWith(`${row.session}|`))) {
-            keys.set(k, { session: row.session, term: null });
-        }
-    }
-    const details = await Promise.all([...keys.values()].map(async ({ session, term }) => {
-        const enrollmentWhere = term ? { session, term } : { session };
-        const [enrollments, scores, teacherAssignments, archived] = await Promise.all([
-            prisma.enrollment.count({ where: enrollmentWhere }),
-            prisma.score.count({ where: { enrollment: enrollmentWhere } }),
-            prisma.teacherSubject.count({ where: { session } }),
-            term
-                ? prisma.resultArchive.count({ where: { session, term } })
-                : prisma.resultArchive.count({ where: { session } }),
+    try {
+        const [enrollmentSessions, assignmentSessions, archives] = await Promise.all([
+            prisma.enrollment.findMany({
+                distinct: ["session", "term"],
+                select: { session: true, term: true },
+                orderBy: [{ session: "desc" }, { term: "asc" }],
+            }),
+            prisma.teacherSubject.findMany({
+                distinct: ["session"],
+                select: { session: true },
+                orderBy: { session: "desc" },
+            }),
+            prisma.resultArchive.findMany({
+                distinct: ["session", "term"],
+                select: { session: true, term: true },
+            }),
         ]);
-        return { session, term, enrollments, scores, teacherAssignments, archived };
-    }));
-    return details.sort((a, b) => {
-        const s = b.session.localeCompare(a.session);
-        if (s !== 0)
-            return s;
-        return String(a.term ?? "").localeCompare(String(b.term ?? ""));
-    });
+        const keys = new Map();
+        for (const row of enrollmentSessions) {
+            keys.set(`${row.session}|${row.term}`, { session: row.session, term: row.term });
+        }
+        for (const row of archives) {
+            const k = `${row.session}|${row.term}`;
+            if (!keys.has(k))
+                keys.set(k, { session: row.session, term: row.term });
+        }
+        for (const row of assignmentSessions) {
+            if (![...keys.keys()].some((x) => x.startsWith(`${row.session}|`))) {
+                keys.set(`${row.session}|`, { session: row.session, term: null });
+            }
+        }
+        const details = await Promise.all([...keys.values()].map(async ({ session, term }) => {
+            const enrollmentWhere = term ? { session, term } : { session };
+            const [enrollments, scores, teacherAssignments, archived] = await Promise.all([
+                prisma.enrollment.count({ where: enrollmentWhere }),
+                prisma.score.count({ where: { enrollment: enrollmentWhere } }),
+                prisma.teacherSubject.count({ where: { session } }),
+                term
+                    ? prisma.resultArchive.count({ where: { session, term } })
+                    : prisma.resultArchive.count({ where: { session } }),
+            ]);
+            return { session, term, enrollments, scores, teacherAssignments, archived };
+        }));
+        return details.sort((a, b) => {
+            const s = b.session.localeCompare(a.session);
+            if (s !== 0)
+                return s;
+            return String(a.term ?? "").localeCompare(String(b.term ?? ""));
+        });
+    }
+    catch (err) {
+        console.warn("listActiveSessions full query failed; using legacy session list", err);
+        const [enrollmentSessions, assignmentSessions] = await Promise.all([
+            prisma.enrollment.findMany({
+                distinct: ["session"],
+                select: { session: true },
+                orderBy: { session: "desc" },
+            }),
+            prisma.teacherSubject.findMany({
+                distinct: ["session"],
+                select: { session: true },
+                orderBy: { session: "desc" },
+            }),
+        ]);
+        const sessions = [
+            ...new Set([
+                ...enrollmentSessions.map((s) => s.session),
+                ...assignmentSessions.map((s) => s.session),
+            ]),
+        ].sort((a, b) => b.localeCompare(a));
+        return Promise.all(sessions.map(async (session) => {
+            const [enrollments, scores, teacherAssignments] = await Promise.all([
+                prisma.enrollment.count({ where: { session } }),
+                prisma.score.count({ where: { enrollment: { session } } }),
+                prisma.teacherSubject.count({ where: { session } }),
+            ]);
+            return {
+                session,
+                term: null,
+                enrollments,
+                scores,
+                teacherAssignments,
+                archived: 0,
+            };
+        }));
+    }
 }
 /**
  * Close a term for a session:

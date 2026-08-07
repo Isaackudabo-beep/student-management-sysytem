@@ -3,7 +3,7 @@
 // Purpose: Students list + Admin registration with class and 5–11 subject selection.
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
-import { Button, Card, ErrorText, Input, Label, Select } from "@/components/ui";
+import { Button, Card, ErrorText, Input, Label, Select, useToast } from "@/components/ui";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { SchoolClass, Student, Subject } from "@/lib/types";
@@ -27,6 +27,7 @@ const emptyForm = {
 
 export default function StudentsPage() {
   const { user } = useAuth();
+  const toast = useToast();
   const [q, setQ] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [page, setPage] = useState(1);
@@ -38,6 +39,7 @@ export default function StudentsPage() {
   const [subjectsLoading, setSubjectsLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [profile, setProfile] = useState<Student | null>(null);
   const [profileBusy, setProfileBusy] = useState(false);
@@ -157,21 +159,28 @@ export default function StudentsPage() {
       );
       return;
     }
+    setBusy(true);
     try {
       await api("/api/students", {
         method: "POST",
         body: JSON.stringify({
           ...form,
           subjectIds: selectedSubjects,
+          term: "FIRST",
         }),
       });
       setMessage("Student registered with subject enrollments");
+      toast.success("Student created");
       setForm(emptyForm);
       setSelectedSubjects([]);
       setSubjects([]);
       await load();
     } catch (err) {
-      setError(formatApiError(err, "Create failed"));
+      const msg = formatApiError(err, "Create failed");
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -191,11 +200,17 @@ export default function StudentsPage() {
 
   async function onDelete(id: string) {
     if (!confirm("Delete this student?")) return;
+    setBusy(true);
     try {
       await api(`/api/students/${id}`, { method: "DELETE" });
+      toast.success("Student deleted");
       await load();
     } catch (err) {
-      setError(formatApiError(err, "Delete failed"));
+      const msg = formatApiError(err, "Delete failed");
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -353,7 +368,7 @@ export default function StudentsPage() {
               )}
             </div>
             <div className="md:col-span-2">
-              <Button type="submit" disabled={!canSubmit}>
+              <Button type="submit" disabled={!canSubmit} loading={busy}>
                 Create student & enroll subjects
               </Button>
               {!canSubmit && selectedClass && !subjectsLoading ? (

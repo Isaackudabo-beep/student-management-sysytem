@@ -54,15 +54,6 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
         message: "Record not found",
       });
     }
-    // Missing column/table — log clearly; do not block the UI with a permanent "updating" banner.
-    if (err.code === "P2021" || err.code === "P2022") {
-      console.error("Prisma schema mismatch:", err.code, err.meta, err.message);
-      return res.status(500).json({
-        success: false,
-        message: "A database field is missing. Migrations may need to finish — refresh shortly.",
-        code: err.code,
-      });
-    }
   }
 
   if (err instanceof Prisma.PrismaClientInitializationError) {

@@ -1,6 +1,5 @@
 // Purpose: Apply idempotent DDL over DIRECT_URL so Neon pooled connections don't block schema fixes.
 import path from "node:path";
-import fs from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
@@ -52,6 +51,45 @@ const STATEMENTS = [
   `DO $$ BEGIN ALTER TABLE "Announcement" ADD CONSTRAINT "Announcement_targetUserId_fkey" FOREIGN KEY ("targetUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
 ];
 
+async function verify(prisma) {
+  const checks = await prisma.$queryRawUnsafe(`
+    SELECT
+      EXISTS(
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'Student' AND column_name = 'academicStatus'
+      ) AS student_status,
+      EXISTS(
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'Enrollment' AND column_name = 'term'
+      ) AS enrollment_term,
+      EXISTS(
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'ResultArchive'
+      ) AS result_archive,
+      EXISTS(
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'Announcement' AND column_name = 'targetClassId'
+      ) AS ann_class,
+      EXISTS(
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'Announcement' AND column_name = 'targetUserId'
+      ) AS ann_user
+  `);
+  const row = Array.isArray(checks) ? checks[0] : checks;
+  console.log("ensure-schema verify:", row);
+  const truthy = (v) => v === true || v === "t" || v === 1 || v === "1";
+  if (
+    !truthy(row?.student_status) ||
+    !truthy(row?.enrollment_term) ||
+    !truthy(row?.result_archive) ||
+    !truthy(row?.ann_class) ||
+    !truthy(row?.ann_user)
+  ) {
+    throw new Error(`Schema verification failed: ${JSON.stringify(row)}`);
+  }
+  return true;
+}
+
 async function main() {
   const direct = process.env.DIRECT_URL || process.env.DATABASE_URL;
   if (!direct) {
@@ -59,7 +97,6 @@ async function main() {
     process.exit(1);
   }
 
-  // Prefer direct (non-pooled) URL for DDL on Neon.
   process.env.DATABASE_URL = direct;
 
   const { PrismaClient } = require("@prisma/client");
@@ -71,7 +108,6 @@ async function main() {
         await prisma.$executeRawUnsafe(sql);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        // Ignore already-exists / concurrent conflicts; fail on unexpected errors.
         if (
           /already exists|duplicate|conflict/i.test(message) ||
           message.includes("42710") ||
@@ -80,9 +116,11 @@ async function main() {
           console.warn("ensure-schema skip:", message.split("\n")[0]);
           continue;
         }
+        console.error("ensure-schema statement failed:", message);
         throw err;
       }
     }
+    await verify(prisma);
     console.log("ensure-schema: OK");
   } finally {
     await prisma.$disconnect();

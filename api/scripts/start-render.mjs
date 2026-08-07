@@ -1,4 +1,4 @@
-// Purpose: Render start — build if needed, migrate/ensure schema, bootstrap admin, boot API.
+// Purpose: Render start — build if needed, ensure schema, mark migrations applied, boot API.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -20,6 +20,11 @@ const prismaBin = path.join(
 );
 const prismaCliJs = path.join(apiRoot, "node_modules", "prisma", "build", "index.js");
 
+const MIGRATIONS_TO_MARK = [
+  "20260806140000_terms_archive_notifications",
+  "20260807180000_ensure_schema_idempotent",
+];
+
 function run(command, args, { shell = false, allowFail = false, env = process.env } = {}) {
   console.log(`> ${command} ${args.join(" ")}`);
   const result = spawnSync(command, args, {
@@ -39,12 +44,15 @@ function run(command, args, { shell = false, allowFail = false, env = process.en
   return result.status ?? 0;
 }
 
-function runPrisma(args, opts = {}) {
-  const env = {
+function prismaEnv() {
+  return {
     ...process.env,
-    // Neon DDL/migrations need the direct (non-pooled) URL when available.
     DATABASE_URL: process.env.DIRECT_URL || process.env.DATABASE_URL,
   };
+}
+
+function runPrisma(args, opts = {}) {
+  const env = prismaEnv();
   if (fs.existsSync(prismaBin)) {
     return run(prismaBin, args, { shell: process.platform === "win32", env, ...opts });
   }
@@ -69,16 +77,21 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-console.log("Applying database migrations (prisma migrate deploy)...");
+console.log("Ensuring schema via DIRECT_URL (idempotent DDL)...");
+run(process.execPath, [ensureSchemaScript], { allowFail: false, env: prismaEnv() });
+
+console.log("Applying prisma migrate deploy...");
 runPrisma(["migrate", "deploy"], { allowFail: true });
 
-console.log("Ensuring schema via DIRECT_URL (idempotent DDL)...");
-run(process.execPath, [ensureSchemaScript], { allowFail: false });
+for (const name of MIGRATIONS_TO_MARK) {
+  // If migrate deploy failed earlier, mark these as applied after ensure-schema succeeded.
+  runPrisma(["migrate", "resolve", "--applied", name], { allowFail: true });
+}
 
 runPrisma(["migrate", "deploy"], { allowFail: true });
 
 console.log("Ensuring admin@sms.local login...");
-run(process.execPath, [ensureAdminScript]);
+run(process.execPath, [ensureAdminScript], { env: prismaEnv() });
 
 console.log("Starting API:", entry);
 run(process.execPath, [entry]);

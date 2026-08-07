@@ -30,24 +30,36 @@ export default function TeachersPage() {
   });
 
   async function load() {
+    setError("");
+    const errors: string[] = [];
+
     try {
-      const [t, s, u] = await Promise.all([
-        api<{ success: true; data: Teacher[] }>("/api/teachers?limit=100"),
-        api<{ success: true; data: Subject[] }>("/api/subjects?limit=200"),
-        api<{ success: true; data: Subject[] }>(
-          `/api/teachers/unassigned-subjects?session=${encodeURIComponent(session)}`
-        ),
-      ]);
+      const t = await api<{ success: true; data: Teacher[] }>("/api/teachers?limit=100");
       setTeachers(t.data);
-      setSubjects(s.data);
-      setUnassigned(u.data);
-      setError("");
       if (!assign.teacherId && t.data[0]) {
         setAssign((a) => ({ ...a, teacherId: t.data[0].id }));
       }
     } catch (err) {
-      setError(formatApiError(err, "Failed to load teachers"));
+      errors.push(formatApiError(err, "Failed to load teachers"));
     }
+
+    try {
+      const s = await api<{ success: true; data: Subject[] }>("/api/subjects?limit=100");
+      setSubjects(s.data);
+    } catch (err) {
+      errors.push(formatApiError(err, "Failed to load subjects"));
+    }
+
+    try {
+      const u = await api<{ success: true; data: Subject[] }>(
+        `/api/teachers/unassigned-subjects?session=${encodeURIComponent(session)}`
+      );
+      setUnassigned(u.data);
+    } catch (err) {
+      errors.push(formatApiError(err, "Failed to load unassigned subjects"));
+    }
+
+    if (errors.length) setError(errors.join("\n"));
   }
 
   useEffect(() => {
