@@ -9,14 +9,26 @@ import {
   useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type SelectHTMLAttributes,
 } from "react";
 import clsx from "clsx";
 
-export function Card({ children, className }: { children: ReactNode; className?: string }) {
+export function Card({
+  children,
+  className,
+  onClick,
+}: {
+  children: ReactNode;
+  className?: string;
+  onClick?: (e: ReactMouseEvent<HTMLDivElement>) => void;
+}) {
   return (
-    <div className={clsx("rounded-3xl border border-line bg-bg-elevated p-5 shadow-[var(--shadow)]", className)}>
+    <div
+      className={clsx("rounded-3xl border border-line bg-bg-elevated p-5 shadow-[var(--shadow)]", className)}
+      onClick={onClick}
+    >
       {children}
     </div>
   );

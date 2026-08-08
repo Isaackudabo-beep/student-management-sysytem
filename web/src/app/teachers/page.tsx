@@ -28,6 +28,8 @@ export default function TeachersPage() {
     teacherId: "",
     subjectIds: [] as string[],
   });
+  const [pickSubject, setPickSubject] = useState<Subject | null>(null);
+  const [assigningTeacherId, setAssigningTeacherId] = useState<string | null>(null);
 
   async function load() {
     setError("");
@@ -187,6 +189,32 @@ export default function TeachersPage() {
     }));
   }
 
+  async function assignSubjectToTeacher(subject: Subject, teacherId: string) {
+    setAssigningTeacherId(teacherId);
+    try {
+      await api("/api/teachers/assign-subjects", {
+        method: "POST",
+        body: JSON.stringify({
+          teacherId,
+          subjectIds: [subject.id],
+          session,
+        }),
+      });
+      const teacher = teachers.find((t) => t.id === teacherId);
+      toast.success(
+        `${subject.code} assigned to ${teacher ? `${teacher.firstName} ${teacher.lastName}` : "teacher"}`
+      );
+      setPickSubject(null);
+      await load();
+    } catch (err) {
+      const msg = formatApiError(err, "Assign failed");
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setAssigningTeacherId(null);
+    }
+  }
+
   return (
     <AppShell title="Teachers">
       <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -320,21 +348,94 @@ export default function TeachersPage() {
           Unassigned subjects ({session})
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Subjects not yet assigned to any teacher for this session.
+          Subjects not yet assigned to any teacher for this session. Click a subject to pick a teacher.
         </p>
         <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {unassigned.length === 0 ? (
             <li className="text-sm text-muted">All subjects are assigned.</li>
           ) : (
             unassigned.map((s) => (
-              <li key={s.id} className="rounded-xl border border-line px-3 py-2 text-sm">
-                <span className="font-semibold">{s.code}</span> · {s.title}
-                <span className="text-muted"> · {s.level}</span>
+              <li key={s.id}>
+                <button
+                  type="button"
+                  onClick={() => setPickSubject(s)}
+                  className="flex w-full items-center justify-between gap-2 rounded-xl border border-line px-3 py-2 text-left text-sm transition hover:border-brand hover:bg-brand-soft"
+                >
+                  <span>
+                    <span className="font-semibold">{s.code}</span> · {s.title}
+                    <span className="text-muted"> · {s.level}</span>
+                  </span>
+                  <span className="shrink-0 text-xs font-semibold text-brand">Assign →</span>
+                </button>
               </li>
             ))
           )}
         </ul>
       </Card>
+
+      {pickSubject ? (
+        <div
+          className="fixed inset-0 z-[70] grid place-items-center bg-ink/45 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPickSubject(null)}
+        >
+          <Card
+            className="max-h-[85vh] w-full max-w-md overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand">
+                  Assign subject
+                </p>
+                <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
+                  {pickSubject.code} · {pickSubject.title}
+                </h2>
+                <p className="mt-1 text-sm text-muted">
+                  {pickSubject.level} · {session}
+                </p>
+              </div>
+              <Button type="button" variant="secondary" onClick={() => setPickSubject(null)}>
+                Close
+              </Button>
+            </div>
+            <p className="mt-4 text-sm text-muted">Choose a teacher to assign this subject to:</p>
+            <ul className="mt-3 space-y-2">
+              {teachers.length === 0 ? (
+                <li className="text-sm text-muted">No teachers available. Add a teacher first.</li>
+              ) : (
+                teachers.map((t) => (
+                  <li key={t.id}>
+                    <button
+                      type="button"
+                      disabled={assigningTeacherId !== null}
+                      onClick={() => void assignSubjectToTeacher(pickSubject, t.id)}
+                      className="flex w-full items-center gap-3 rounded-xl border border-line px-3 py-2 text-left transition hover:border-brand hover:bg-brand-soft disabled:opacity-60"
+                    >
+                      <Avatar name={`${t.firstName} ${t.lastName}`} size="sm" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold">
+                          {t.firstName} {t.lastName}
+                        </span>
+                        <span className="block truncate text-xs text-muted">{t.department}</span>
+                      </span>
+                      {assigningTeacherId === t.id ? (
+                        <span
+                          className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-brand/25 border-t-brand"
+                          aria-hidden
+                        />
+                      ) : (
+                        <span className="shrink-0 text-xs font-semibold text-brand">Select</span>
+                      )}
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+          </Card>
+        </div>
+      ) : null}
 
       <Card className="mt-6">
         <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">All teachers</h2>

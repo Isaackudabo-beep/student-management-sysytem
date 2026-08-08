@@ -149,17 +149,28 @@ export async function assignTeacherToSubject(input: {
   await assertFound(await prisma.teacher.findUnique({ where: { id: input.teacherId } }), "Teacher not found");
   await assertFound(await prisma.subject.findUnique({ where: { id: input.subjectId } }), "Subject not found");
 
-  return prisma.teacherSubject.upsert({
-    where: {
-      teacherId_subjectId_session: {
-        teacherId: input.teacherId,
+  return prisma.$transaction(async (tx) => {
+    // A subject belongs to a single teacher per session: drop any other holder first.
+    await tx.teacherSubject.deleteMany({
+      where: {
         subjectId: input.subjectId,
         session: input.session,
+        teacherId: { not: input.teacherId },
       },
-    },
-    create: input,
-    update: {},
-    include: { teacher: true, subject: true },
+    });
+
+    return tx.teacherSubject.upsert({
+      where: {
+        teacherId_subjectId_session: {
+          teacherId: input.teacherId,
+          subjectId: input.subjectId,
+          session: input.session,
+        },
+      },
+      create: input,
+      update: {},
+      include: { teacher: true, subject: true },
+    });
   });
 }
 
@@ -174,24 +185,36 @@ export async function assignTeacherSubjects(input: {
     throw new AppError(400, "One or more subjects were not found");
   }
 
-  const created = await prisma.$transaction(
-    input.subjectIds.map((subjectId) =>
-      prisma.teacherSubject.upsert({
-        where: {
-          teacherId_subjectId_session: {
-            teacherId: input.teacherId,
-            subjectId,
-            session: input.session,
-          },
-        },
-        create: { teacherId: input.teacherId, subjectId, session: input.session },
-        update: {},
-        include: { subject: true },
-      })
-    )
-  );
+  return prisma.$transaction(async (tx) => {
+    // Reassign each subject exclusively to this teacher for the session.
+    await tx.teacherSubject.deleteMany({
+      where: {
+        subjectId: { in: input.subjectIds },
+        session: input.session,
+        teacherId: { not: input.teacherId },
+      },
+    });
 
-  return created;
+    const created = [];
+    for (const subjectId of input.subjectIds) {
+      created.push(
+        await tx.teacherSubject.upsert({
+          where: {
+            teacherId_subjectId_session: {
+              teacherId: input.teacherId,
+              subjectId,
+              session: input.session,
+            },
+          },
+          create: { teacherId: input.teacherId, subjectId, session: input.session },
+          update: {},
+          include: { subject: true },
+        })
+      );
+    }
+
+    return created;
+  });
 }
 
 export async function removeTeacherSubject(assignmentId: string) {
