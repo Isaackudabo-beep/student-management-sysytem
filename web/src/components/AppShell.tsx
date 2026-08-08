@@ -3,7 +3,7 @@
 // Purpose: Auth gate + sidebar shell with role nav and forced password-change redirect.
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { dashboardPath, useAuth } from "@/lib/auth";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -35,6 +35,7 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
   const { user, loading, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (loading) return;
@@ -51,6 +52,26 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
       router.replace(dashboardPath(user.role));
     }
   }, [loading, user, router, pathname]);
+
+  // Close the mobile menu on navigation.
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  // Lock scroll and support Escape while the mobile menu is open.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
 
   if (loading || !user) {
     return (
@@ -118,49 +139,98 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
       </aside>
 
       <section className="min-w-0 flex-1">
-        <header className="no-print mb-6 rounded-3xl border border-line bg-bg-elevated px-6 py-5 shadow-[var(--shadow)]">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm text-muted md:hidden">
-                {user.fullName} · {user.role}
-              </p>
-              <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold">
-                {title}
-              </h1>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <NotificationBell />
-              <div className="no-print flex max-w-full gap-2 overflow-x-auto pb-1 md:hidden">
-                {links.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={clsx(
-                      "shrink-0 rounded-xl border px-3 py-2 text-xs font-semibold",
-                      pathname === link.href || pathname.startsWith(link.href + "/")
-                        ? "border-brand bg-brand text-white"
-                        : "border-line bg-white"
-                    )}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => {
-                    logout();
-                    router.replace("/");
-                  }}
-                  className="shrink-0 rounded-xl border border-line bg-white px-3 py-2 text-xs font-semibold"
-                >
-                  Sign out
-                </button>
+        <header className="no-print mb-6 rounded-3xl border border-line bg-bg-elevated px-4 py-4 shadow-[var(--shadow)] sm:px-6 sm:py-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                type="button"
+                aria-label="Open menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen(true)}
+                className="shrink-0 rounded-xl border border-line bg-white p-2.5 md:hidden"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2" aria-hidden>
+                  <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+                </svg>
+              </button>
+              <div className="min-w-0">
+                <p className="truncate text-sm text-muted md:hidden">
+                  {user.fullName} · {user.role}
+                </p>
+                <h1 className="truncate font-[family-name:var(--font-display)] text-2xl font-semibold sm:text-3xl">
+                  {title}
+                </h1>
               </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <NotificationBell />
             </div>
           </div>
         </header>
         {children}
       </section>
+
+      {menuOpen ? (
+        <div className="no-print fixed inset-0 z-[75] md:hidden" role="dialog" aria-modal="true" aria-label="Navigation menu">
+          <button
+            type="button"
+            aria-label="Close menu"
+            className="absolute inset-0 bg-ink/45 backdrop-blur-[2px]"
+            onClick={() => setMenuOpen(false)}
+          />
+          <div className="absolute inset-y-0 left-0 flex w-[min(85vw,20rem)] animate-[slideInLeft_0.25s_ease-out] flex-col bg-bg-elevated p-5 shadow-[var(--shadow)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand">SMS</p>
+                <h2 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold">
+                  School Desk
+                </h2>
+                <p className="mt-1 text-sm text-muted">
+                  {user.fullName} · {user.role}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close menu"
+                onClick={() => setMenuOpen(false)}
+                className="rounded-xl border border-line p-2.5"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2" aria-hidden>
+                  <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+            <nav className="mt-6 flex-1 space-y-1 overflow-y-auto">
+              {links.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMenuOpen(false)}
+                  className={clsx(
+                    "block rounded-xl px-3 py-3 text-sm font-semibold transition",
+                    pathname === link.href || pathname.startsWith(link.href + "/")
+                      ? "bg-brand text-white"
+                      : "text-ink hover:bg-brand-soft"
+                  )}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                logout();
+                router.replace("/");
+              }}
+              className="mt-4 w-full rounded-xl border border-line px-3 py-3 text-sm font-semibold"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
