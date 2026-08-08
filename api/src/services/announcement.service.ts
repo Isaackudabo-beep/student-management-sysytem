@@ -46,7 +46,10 @@ export async function createAnnouncement(
         createdById: actor.id,
         targetClassId: input.targetClassId ?? null,
         targetUserId: input.targetUserId ?? null,
-        expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+        expiresAt:
+          input.expiresAt && !Number.isNaN(Date.parse(input.expiresAt))
+            ? new Date(input.expiresAt)
+            : null,
       },
     });
   } catch {
@@ -59,7 +62,10 @@ export async function createAnnouncement(
         body: input.body,
         audience: input.audience,
         createdById: actor.id,
-        expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+        expiresAt:
+          input.expiresAt && !Number.isNaN(Date.parse(input.expiresAt))
+            ? new Date(input.expiresAt)
+            : null,
       },
     });
   }

@@ -15,6 +15,8 @@ export default function EnrollmentsPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     studentId: "",
     subjectId: "",
@@ -86,24 +88,30 @@ export default function EnrollmentsPage() {
       setError("Select a student and a subject that matches their class level");
       return;
     }
+    setBusy(true);
     try {
       await api("/api/enrollments", { method: "POST", body: JSON.stringify(form) });
       setMessage("Student enrolled in subject");
       await load();
     } catch (err) {
       setError(formatApiError(err, "Enroll failed"));
+    } finally {
+      setBusy(false);
     }
   }
 
   async function onDelete(id: string) {
     if (!confirm("Remove enrollment?")) return;
     setError("");
+    setDeletingId(id);
     try {
       await api(`/api/enrollments/${id}`, { method: "DELETE" });
       setMessage("Enrollment removed");
       await load();
     } catch (err) {
       setError(formatApiError(err, "Delete failed"));
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -153,7 +161,7 @@ export default function EnrollmentsPage() {
             />
           </div>
           <div className="flex items-end">
-            <Button type="submit" className="w-full" disabled={!form.subjectId}>
+            <Button type="submit" className="w-full" disabled={!form.subjectId} loading={busy}>
               Enroll
             </Button>
           </div>
@@ -192,7 +200,11 @@ export default function EnrollmentsPage() {
                     {e.score ? `${e.score.total} (${e.score.grade})` : "Pending"}
                   </td>
                   <td className="py-3">
-                    <Button variant="danger" onClick={() => void onDelete(e.id)}>
+                    <Button
+                      variant="danger"
+                      loading={deletingId === e.id}
+                      onClick={() => void onDelete(e.id)}
+                    >
                       Delete
                     </Button>
                   </td>

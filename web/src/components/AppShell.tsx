@@ -130,27 +130,32 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <NotificationBell />
-              <div className="flex flex-wrap gap-2 md:hidden">
+              <div className="no-print flex max-w-full gap-2 overflow-x-auto pb-1 md:hidden">
                 {links.map((link) => (
                   <Link
                     key={link.href}
                     href={link.href}
-                    className="rounded-full border border-line px-3 py-1 text-xs font-semibold"
+                    className={clsx(
+                      "shrink-0 rounded-xl border px-3 py-2 text-xs font-semibold",
+                      pathname === link.href || pathname.startsWith(link.href + "/")
+                        ? "border-brand bg-brand text-white"
+                        : "border-line bg-white"
+                    )}
                   >
                     {link.label}
                   </Link>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    logout();
+                    router.replace("/");
+                  }}
+                  className="shrink-0 rounded-xl border border-line bg-white px-3 py-2 text-xs font-semibold"
+                >
+                  Sign out
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  logout();
-                  router.replace("/");
-                }}
-                className="rounded-full border border-line px-3 py-1 text-xs font-semibold md:hidden"
-              >
-                Sign out
-              </button>
             </div>
           </div>
         </header>

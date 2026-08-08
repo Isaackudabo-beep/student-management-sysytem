@@ -375,7 +375,7 @@ export default function TeachersPage() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button type="button" variant="secondary" onClick={() => startEdit(t)}>
+                <Button type="button" variant="secondary" disabled={busy} onClick={() => startEdit(t)}>
                   Edit
                 </Button>
                 <Button type="button" variant="danger" loading={busy} onClick={() => void onDelete(t.id)}>

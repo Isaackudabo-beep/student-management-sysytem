@@ -45,6 +45,30 @@ export function errorHandler(err, _req, res, _next) {
                 message: "Record not found",
             });
         }
+        // Missing table/column — schema still applying or DIRECT_URL not set on host.
+        if (err.code === "P2021" || err.code === "P2022") {
+            console.error(err);
+            return res.status(503).json({
+                success: false,
+                message: "Database schema is updating. Wait about a minute and refresh — if this persists, set DIRECT_URL on the API host and redeploy.",
+                code: err.code,
+            });
+        }
+        if (err.code === "P2010") {
+            console.error(err);
+            return res.status(503).json({
+                success: false,
+                message: "Database query failed. Please retry shortly.",
+                code: err.code,
+            });
+        }
+    }
+    if (err instanceof Prisma.PrismaClientValidationError) {
+        console.error(err);
+        return res.status(400).json({
+            success: false,
+            message: "Invalid request data for this operation",
+        });
     }
     if (err instanceof Prisma.PrismaClientInitializationError) {
         console.error(err);
@@ -53,9 +77,18 @@ export function errorHandler(err, _req, res, _next) {
             message: "Database connection unavailable. Please retry shortly.",
         });
     }
+    if (err instanceof Error && /Invalid time value|Invalid Date/i.test(err.message)) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid date value provided",
+        });
+    }
     console.error(err);
+    const detail = err instanceof Error ? err.message : String(err);
     return res.status(500).json({
         success: false,
-        message: env.NODE_ENV === "production" ? "Internal server error" : String(err),
+        message: env.NODE_ENV === "production"
+            ? "Something went wrong. Please retry or contact support if it continues."
+            : detail,
     });
 }

@@ -13,6 +13,9 @@ export default function SubjectsPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [q, setQ] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     code: "",
     title: "",
@@ -39,6 +42,8 @@ export default function SubjectsPage() {
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
+    setBusy(true);
+    setError("");
     try {
       await api("/api/subjects", {
         method: "POST",
@@ -53,16 +58,22 @@ export default function SubjectsPage() {
       await load();
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Create failed");
+    } finally {
+      setBusy(false);
     }
   }
 
   async function onDelete(id: string) {
     if (!confirm("Delete this subject?")) return;
+    setDeletingId(id);
+    setError("");
     try {
       await api(`/api/subjects/${id}`, { method: "DELETE" });
       await load();
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Delete failed");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -71,7 +82,14 @@ export default function SubjectsPage() {
       <Card className="mb-6">
         <div className="flex flex-col gap-3 sm:flex-row">
           <Input placeholder="Search code or title…" value={q} onChange={(e) => setQ(e.target.value)} />
-          <Button type="button" onClick={() => void load(q)}>
+          <Button
+            type="button"
+            loading={searching}
+            onClick={() => {
+              setSearching(true);
+              void load(q).finally(() => setSearching(false));
+            }}
+          >
             Search
           </Button>
         </div>
@@ -94,7 +112,9 @@ export default function SubjectsPage() {
               </div>
             ))}
             <div className="md:col-span-5">
-              <Button type="submit">Create subject</Button>
+              <Button type="submit" loading={busy}>
+                Create subject
+              </Button>
             </div>
           </form>
         </Card>
@@ -125,7 +145,11 @@ export default function SubjectsPage() {
                   <td className="py-3 pr-4">{s.level}</td>
                   {user?.role === "ADMIN" ? (
                     <td className="py-3">
-                      <Button variant="danger" onClick={() => void onDelete(s.id)}>
+                      <Button
+                        variant="danger"
+                        loading={deletingId === s.id}
+                        onClick={() => void onDelete(s.id)}
+                      >
                         Delete
                       </Button>
                     </td>

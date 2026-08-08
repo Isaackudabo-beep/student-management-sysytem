@@ -17,6 +17,7 @@ export async function listActiveSessions() {
             prisma.resultArchive.findMany({
                 distinct: ["session", "term"],
                 select: { session: true, term: true },
+                orderBy: [{ session: "desc" }, { term: "asc" }],
             }),
         ]);
         const keys = new Map();
@@ -46,14 +47,13 @@ export async function listActiveSessions() {
             return { session, term, enrollments, scores, teacherAssignments, archived };
         }));
         return details.sort((a, b) => {
-            const s = b.session.localeCompare(a.session);
-            if (s !== 0)
-                return s;
+            const sessionCmp = String(b.session).localeCompare(String(a.session));
+            if (sessionCmp !== 0)
+                return sessionCmp;
             return String(a.term ?? "").localeCompare(String(b.term ?? ""));
         });
     }
-    catch (err) {
-        console.warn("listActiveSessions full query failed; using legacy session list", err);
+    catch {
         const [enrollmentSessions, assignmentSessions] = await Promise.all([
             prisma.enrollment.findMany({
                 distinct: ["session"],
@@ -68,10 +68,10 @@ export async function listActiveSessions() {
         ]);
         const sessions = [
             ...new Set([
-                ...enrollmentSessions.map((s) => s.session),
-                ...assignmentSessions.map((s) => s.session),
+                ...enrollmentSessions.map((r) => r.session),
+                ...assignmentSessions.map((r) => r.session),
             ]),
-        ].sort((a, b) => b.localeCompare(a));
+        ];
         return Promise.all(sessions.map(async (session) => {
             const [enrollments, scores, teacherAssignments] = await Promise.all([
                 prisma.enrollment.count({ where: { session } }),

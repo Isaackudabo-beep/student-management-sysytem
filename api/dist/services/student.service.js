@@ -2,6 +2,7 @@
 import bcrypt from "bcryptjs";
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
+import { isSchemaMismatch, studentBaseSelect, studentSelectWithStatus, withAcademicStatus, } from "../lib/safeSelects.js";
 export async function createStudent(input) {
     if (input.subjectIds.length < 5 || input.subjectIds.length > 11) {
         throw new AppError(400, "Select between 5 and 11 subjects");
@@ -94,42 +95,93 @@ export async function listStudents(params) {
                 : {},
         ],
     };
-    const [total, data] = await Promise.all([
-        prisma.student.count({ where }),
-        prisma.student.findMany({
-            where,
-            skip: (params.page - 1) * params.limit,
-            take: params.limit,
-            orderBy: { createdAt: "desc" },
-            include: {
-                user: { select: { id: true, fullName: true, role: true, mustChangePassword: true } },
-                schoolClass: true,
-                _count: { select: { enrollments: true } },
-            },
-        }),
-    ]);
-    return {
-        data,
-        meta: { total, page: params.page, limit: params.limit, pages: Math.ceil(total / params.limit) || 1 },
-    };
+    const userSelect = { id: true, fullName: true, role: true, mustChangePassword: true };
+    const skip = (params.page - 1) * params.limit;
+    async function fetch(select) {
+        const [total, rows] = await Promise.all([
+            prisma.student.count({ where }),
+            prisma.student.findMany({
+                where,
+                skip,
+                take: params.limit,
+                orderBy: { createdAt: "desc" },
+                select: {
+                    ...select,
+                    user: { select: userSelect },
+                    schoolClass: true,
+                    _count: { select: { enrollments: true } },
+                },
+            }),
+        ]);
+        return {
+            data: rows.map((row) => withAcademicStatus(row)),
+            meta: { total, page: params.page, limit: params.limit, pages: Math.ceil(total / params.limit) || 1 },
+        };
+    }
+    try {
+        return await fetch(studentSelectWithStatus);
+    }
+    catch (err) {
+        if (!isSchemaMismatch(err))
+            throw err;
+        return fetch(studentBaseSelect);
+    }
 }
 export async function getStudentById(id) {
-    const student = assertFound(await prisma.student.findUnique({
-        where: { id },
-        include: {
-            user: {
-                select: { id: true, fullName: true, email: true, role: true, mustChangePassword: true },
-            },
-            schoolClass: true,
-            enrollments: {
+    const userSelect = {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
+        mustChangePassword: true,
+    };
+    async function load(select) {
+        let enrollments;
+        try {
+            enrollments = await prisma.enrollment.findMany({
+                where: { studentId: id },
                 include: { subject: true, score: true },
                 orderBy: [{ session: "desc" }, { term: "asc" }, { createdAt: "asc" }],
-            },
-            archivedResults: {
+            });
+        }
+        catch (err) {
+            if (!isSchemaMismatch(err))
+                throw err;
+            enrollments = await prisma.enrollment.findMany({
+                where: { studentId: id },
+                include: { subject: true, score: true },
+                orderBy: [{ session: "desc" }, { createdAt: "asc" }],
+            });
+        }
+        let archivedResults = [];
+        try {
+            archivedResults = await prisma.resultArchive.findMany({
+                where: { studentId: id },
                 orderBy: [{ session: "desc" }, { term: "asc" }, { archivedAt: "desc" }],
+            });
+        }
+        catch {
+            archivedResults = [];
+        }
+        const student = assertFound(await prisma.student.findUnique({
+            where: { id },
+            select: {
+                ...select,
+                user: { select: userSelect },
+                schoolClass: true,
             },
-        },
-    }), "Student not found");
+        }), "Student not found");
+        return { ...withAcademicStatus(student), enrollments, archivedResults };
+    }
+    let student;
+    try {
+        student = await load(studentSelectWithStatus);
+    }
+    catch (err) {
+        if (!isSchemaMismatch(err))
+            throw err;
+        student = await load(studentBaseSelect);
+    }
     const classLabel = student.academicStatus === "REPEATING"
         ? `Repeated · ${student.schoolClass.name}`
         : student.schoolClass.name;

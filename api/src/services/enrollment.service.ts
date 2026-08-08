@@ -3,6 +3,15 @@ import { Prisma } from "@prisma/client";
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import type { AuthUser } from "../middleware/auth.js";
+import {
+  enrollmentBaseSelect,
+  enrollmentSelectWithTerm,
+  isSchemaMismatch,
+  studentBaseSelect,
+  studentSelectWithStatus,
+  withAcademicStatus,
+  withTerm,
+} from "../lib/safeSelects.js";
 
 export async function createEnrollment(input: {
   studentId: string;
@@ -24,36 +33,68 @@ export async function createEnrollment(input: {
     throw new AppError(400, `Subject level ${subject.level} does not match student class level ${student.level}`);
   }
 
-  const count = await prisma.enrollment.count({
-    where: { studentId: input.studentId, session: input.session, term },
-  });
-  if (count >= 11) {
-    throw new AppError(400, "A student cannot have more than 11 subjects in a term");
-  }
+  try {
+    const count = await prisma.enrollment.count({
+      where: { studentId: input.studentId, session: input.session, term },
+    });
+    if (count >= 11) {
+      throw new AppError(400, "A student cannot have more than 11 subjects in a term");
+    }
 
-  const existing = await prisma.enrollment.findUnique({
-    where: {
-      studentId_subjectId_session_term: {
+    const existing = await prisma.enrollment.findUnique({
+      where: {
+        studentId_subjectId_session_term: {
+          studentId: input.studentId,
+          subjectId: input.subjectId,
+          session: input.session,
+          term,
+        },
+      },
+    });
+    if (existing) {
+      throw new AppError(409, "This student is already enrolled in that subject for this session/term");
+    }
+
+    return prisma.enrollment.create({
+      data: {
         studentId: input.studentId,
         subjectId: input.subjectId,
         session: input.session,
         term,
       },
-    },
-  });
-  if (existing) {
-    throw new AppError(409, "This student is already enrolled in that subject for this session/term");
-  }
+      include: { student: true, subject: true },
+    });
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    if (!isSchemaMismatch(err)) throw err;
 
-  return prisma.enrollment.create({
-    data: {
-      studentId: input.studentId,
-      subjectId: input.subjectId,
-      session: input.session,
-      term,
-    },
-    include: { student: true, subject: true },
-  });
+    const count = await prisma.enrollment.count({
+      where: { studentId: input.studentId, session: input.session },
+    });
+    if (count >= 11) {
+      throw new AppError(400, "A student cannot have more than 11 subjects in a session");
+    }
+
+    const existing = await prisma.enrollment.findFirst({
+      where: {
+        studentId: input.studentId,
+        subjectId: input.subjectId,
+        session: input.session,
+      },
+    });
+    if (existing) {
+      throw new AppError(409, "This student is already enrolled in that subject for this session");
+    }
+
+    return prisma.enrollment.create({
+      data: {
+        studentId: input.studentId,
+        subjectId: input.subjectId,
+        session: input.session,
+      },
+      include: { student: true, subject: true },
+    });
+  }
 }
 
 export async function listEnrollments(
@@ -90,7 +131,7 @@ export async function listEnrollments(
     params.studentId = actor.studentId;
   }
 
-  const where: Prisma.EnrollmentWhereInput = {
+  const whereWithTerm: Prisma.EnrollmentWhereInput = {
     AND: [
       subjectFilter,
       params.studentId ? { studentId: params.studentId } : {},
@@ -101,31 +142,66 @@ export async function listEnrollments(
     ],
   };
 
-  const [total, rows] = await Promise.all([
-    prisma.enrollment.count({ where }),
-    prisma.enrollment.findMany({
-      where,
-      skip: (params.page - 1) * params.limit,
-      take: params.limit,
-      orderBy: { createdAt: "desc" },
-      include: {
-        student: { include: { schoolClass: true } },
-        subject: true,
-        score: true,
-      },
-    }),
-  ]);
-
-  const data = rows.map((e) => ({
-    ...e,
-    resultStatus: e.score ? "GRADED" : "AWAITING_RESULT",
-    resultStatusLabel: e.score ? "Graded" : "Awaiting Result",
-  }));
-
-  return {
-    data,
-    meta: { total, page: params.page, limit: params.limit, pages: Math.ceil(total / params.limit) || 1 },
+  const whereLegacy: Prisma.EnrollmentWhereInput = {
+    AND: [
+      subjectFilter,
+      params.studentId ? { studentId: params.studentId } : {},
+      params.subjectId ? { subjectId: params.subjectId } : {},
+      params.session ? { session: params.session } : {},
+      params.classId ? { student: { classId: params.classId } } : {},
+    ],
   };
+
+  async function fetch(
+    where: Prisma.EnrollmentWhereInput,
+    enrollmentSelect: typeof enrollmentSelectWithTerm | typeof enrollmentBaseSelect,
+    studentSelect: typeof studentSelectWithStatus | typeof studentBaseSelect
+  ) {
+    const [total, rows] = await Promise.all([
+      prisma.enrollment.count({ where }),
+      prisma.enrollment.findMany({
+        where,
+        skip: (params.page - 1) * params.limit,
+        take: params.limit,
+        orderBy: { createdAt: "desc" },
+        select: {
+          ...enrollmentSelect,
+          student: {
+            select: {
+              ...studentSelect,
+              schoolClass: true,
+            },
+          },
+          subject: true,
+          score: true,
+        },
+      }),
+    ]);
+
+    const data = rows.map((e) => {
+      const row = withTerm({
+        ...e,
+        student: withAcademicStatus(e.student),
+      });
+      return {
+        ...row,
+        resultStatus: e.score ? "GRADED" : "AWAITING_RESULT",
+        resultStatusLabel: e.score ? "Graded" : "Awaiting Result",
+      };
+    });
+
+    return {
+      data,
+      meta: { total, page: params.page, limit: params.limit, pages: Math.ceil(total / params.limit) || 1 },
+    };
+  }
+
+  try {
+    return await fetch(whereWithTerm, enrollmentSelectWithTerm, studentSelectWithStatus);
+  } catch (err) {
+    if (!isSchemaMismatch(err)) throw err;
+    return fetch(whereLegacy, enrollmentBaseSelect, studentBaseSelect);
+  }
 }
 
 export async function deleteEnrollment(id: string) {

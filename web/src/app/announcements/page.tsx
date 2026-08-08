@@ -27,6 +27,7 @@ export default function AnnouncementsPage() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: "",
     body: "",
@@ -94,12 +95,15 @@ export default function AnnouncementsPage() {
 
   async function onDelete(id: string) {
     if (!confirm("Delete this announcement?")) return;
+    setDeletingId(id);
     try {
       await api(`/api/announcements/${id}`, { method: "DELETE" });
       toast.success("Deleted");
       await load();
     } catch (err) {
       toast.error(err instanceof ApiRequestError ? err.message : "Delete failed");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -219,9 +223,14 @@ export default function AnnouncementsPage() {
                     {new Date(r.publishedAt).toLocaleString()} · {r._count?.reads ?? 0} reads
                   </p>
                 </div>
-                <button type="button" className="text-danger" onClick={() => void onDelete(r.id)}>
+                <Button
+                  type="button"
+                  variant="danger"
+                  loading={deletingId === r.id}
+                  onClick={() => void onDelete(r.id)}
+                >
                   Delete
-                </button>
+                </Button>
               </div>
             </li>
           ))}

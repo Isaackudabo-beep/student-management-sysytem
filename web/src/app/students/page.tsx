@@ -40,6 +40,7 @@ export default function StudentsPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [listBusy, setListBusy] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [profile, setProfile] = useState<Student | null>(null);
   const [profileBusy, setProfileBusy] = useState(false);
@@ -56,6 +57,7 @@ export default function StudentsPage() {
     !subjectsLoading;
 
   async function load(search = q, pageNum = page, classId = classFilter) {
+    setListBusy(true);
     try {
       const qs = new URLSearchParams({
         q: search,
@@ -71,6 +73,8 @@ export default function StudentsPage() {
       setError("");
     } catch (err) {
       setError(formatApiError(err, "Failed to load students"));
+    } finally {
+      setListBusy(false);
     }
   }
 
@@ -240,6 +244,7 @@ export default function StudentsPage() {
           </Select>
           <Button
             type="button"
+            loading={listBusy}
             onClick={() => {
               setPage(1);
               void load(q, 1, classFilter);
@@ -447,6 +452,7 @@ export default function StudentsPage() {
         <div className="mt-4 flex items-center gap-3">
           <Button
             type="button"
+            loading={listBusy}
             disabled={page <= 1}
             onClick={() => {
               const next = page - 1;
@@ -461,6 +467,7 @@ export default function StudentsPage() {
           </span>
           <Button
             type="button"
+            loading={listBusy}
             disabled={page >= pages}
             onClick={() => {
               const next = page + 1;

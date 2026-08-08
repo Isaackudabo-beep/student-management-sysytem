@@ -36,19 +36,28 @@ export function Button({
   return (
     <button
       className={clsx(
-        "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50",
-        variant === "primary" && "bg-brand text-white",
-        variant === "secondary" && "border border-line bg-white text-ink",
-        variant === "danger" && "bg-danger text-white",
+        "relative inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
+        variant === "primary" && "bg-brand text-white hover:bg-brand/90",
+        variant === "secondary" && "border border-line bg-white text-ink hover:bg-brand-soft",
+        variant === "danger" && "bg-danger text-white hover:bg-danger/90",
         className
       )}
       disabled={disabled || loading}
+      aria-busy={loading || undefined}
       {...props}
     >
       {loading ? (
-        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+        <span
+          className={clsx(
+            "inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2",
+            variant === "secondary"
+              ? "border-brand/25 border-t-brand"
+              : "border-white/35 border-t-white"
+          )}
+          aria-hidden
+        />
       ) : null}
-      {children}
+      <span className={clsx(loading && "opacity-90")}>{children}</span>
     </button>
   );
 }
@@ -56,18 +65,31 @@ export function Button({
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className="w-full rounded-xl border border-line bg-white px-3 py-2.5 outline-none ring-brand focus:ring-2 disabled:opacity-60"
+      className="min-h-11 w-full rounded-xl border border-line bg-white px-3 py-2.5 outline-none ring-brand focus:ring-2 disabled:opacity-60"
       {...props}
     />
   );
 }
 
-export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
+export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select
-      className="w-full rounded-xl border border-line bg-white px-3 py-2.5 outline-none ring-brand focus:ring-2 disabled:opacity-60"
-      {...props}
-    />
+    <div className="relative">
+      <select
+        className={clsx(
+          "min-h-11 w-full appearance-none rounded-xl border border-line bg-white px-3 py-2.5 pr-10 outline-none ring-brand focus:ring-2 disabled:opacity-60",
+          className
+        )}
+        {...props}
+      />
+      <span
+        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted"
+        aria-hidden
+      >
+        <svg viewBox="0 0 20 20" className="h-4 w-4 fill-current">
+          <path d="M5.25 7.5 10 12.25 14.75 7.5" />
+        </svg>
+      </span>
+    </div>
   );
 }
 

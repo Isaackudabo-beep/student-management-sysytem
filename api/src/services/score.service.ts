@@ -3,6 +3,15 @@ import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { calculateGrade } from "../utils/grades.js";
 import type { AuthUser } from "../middleware/auth.js";
+import {
+  enrollmentBaseSelect,
+  enrollmentSelectWithTerm,
+  isSchemaMismatch,
+  studentBaseSelect,
+  studentSelectWithStatus,
+  withAcademicStatus,
+  withTerm,
+} from "../lib/safeSelects.js";
 
 async function assertTeacherCanScore(teacherId: string, subjectId: string, session: string) {
   const assignment = await prisma.teacherSubject.findFirst({
@@ -94,7 +103,7 @@ async function notifyScoreSaved(
     const { createSystemAnnouncement } = await import("./announcement.service.js");
     await createSystemAnnouncement({
       title: `Result published — ${score.enrollment.subject.code}`,
-      body: `Your score in ${score.enrollment.subject.title} (${score.enrollment.session}, ${score.enrollment.term}) is ${score.total} (${score.grade}).`,
+      body: `Your score in ${score.enrollment.subject.title} (${score.enrollment.session}, ${score.enrollment.term ?? "FIRST"}) is ${score.total} (${score.grade}).`,
       audience: "USER",
       createdById: actorId,
       targetUserId: score.enrollment.student.userId,
@@ -123,20 +132,7 @@ export async function listScores(params: {
     params.studentId = actor.studentId;
   }
 
-  let enrollmentFilter: {
-    studentId?: string;
-    subjectId?: string;
-    session?: string;
-    term?: "FIRST" | "SECOND" | "THIRD";
-    student?: { classId: string };
-    OR?: Array<{ subjectId: string; session: string }>;
-  } = {
-    studentId: params.studentId,
-    subjectId: params.subjectId,
-    session: params.session,
-    term: params.term,
-    ...(params.classId ? { student: { classId: params.classId } } : {}),
-  };
+  let assignmentOr: Array<{ subjectId: string; session: string }> | undefined;
 
   if (actor.role === "TEACHER") {
     if (!actor.teacherId) throw new AppError(403, "Teacher profile not found");
@@ -149,34 +145,79 @@ export async function listScores(params: {
         meta: { total: 0, page: params.page, limit: params.limit, pages: 0 },
       };
     }
-    enrollmentFilter = {
-      ...enrollmentFilter,
-      OR: assignments.map((a) => ({ subjectId: a.subjectId, session: a.session })),
+    assignmentOr = assignments.map((a) => ({ subjectId: a.subjectId, session: a.session }));
+  }
+
+  function buildEnrollmentFilter(includeTerm: boolean) {
+    const base: Record<string, unknown> = {
+      ...(params.studentId ? { studentId: params.studentId } : {}),
+      ...(params.subjectId ? { subjectId: params.subjectId } : {}),
+      ...(params.session ? { session: params.session } : {}),
+      ...(includeTerm && params.term ? { term: params.term } : {}),
+      ...(params.classId ? { student: { classId: params.classId } } : {}),
+      ...(assignmentOr ? { OR: assignmentOr } : {}),
+    };
+    return base;
+  }
+
+  async function fetch(
+    includeTerm: boolean,
+    enrollmentSelect: typeof enrollmentSelectWithTerm | typeof enrollmentBaseSelect,
+    studentSelect: typeof studentSelectWithStatus | typeof studentBaseSelect
+  ) {
+    const enrollmentFilter = buildEnrollmentFilter(includeTerm);
+    const where = { enrollment: enrollmentFilter };
+
+    const [total, rows] = await Promise.all([
+      prisma.score.count({ where }),
+      prisma.score.findMany({
+        where,
+        skip: (params.page - 1) * params.limit,
+        take: params.limit,
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          enrollmentId: true,
+          teacherId: true,
+          assessment: true,
+          exam: true,
+          total: true,
+          grade: true,
+          remark: true,
+          createdAt: true,
+          updatedAt: true,
+          teacher: true,
+          enrollment: {
+            select: {
+              ...enrollmentSelect,
+              student: { select: studentSelect },
+              subject: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const data = rows.map((row) => ({
+      ...row,
+      enrollment: withTerm({
+        ...row.enrollment,
+        student: withAcademicStatus(row.enrollment.student),
+      }),
+    }));
+
+    return {
+      data,
+      meta: { total, page: params.page, limit: params.limit, pages: Math.ceil(total / params.limit) || 1 },
     };
   }
 
-  const where = {
-    enrollment: enrollmentFilter,
-  };
-
-  const [total, data] = await Promise.all([
-    prisma.score.count({ where }),
-    prisma.score.findMany({
-      where,
-      skip: (params.page - 1) * params.limit,
-      take: params.limit,
-      orderBy: { updatedAt: "desc" },
-      include: {
-        enrollment: { include: { student: true, subject: true } },
-        teacher: true,
-      },
-    }),
-  ]);
-
-  return {
-    data,
-    meta: { total, page: params.page, limit: params.limit, pages: Math.ceil(total / params.limit) },
-  };
+  try {
+    return await fetch(true, enrollmentSelectWithTerm, studentSelectWithStatus);
+  } catch (err) {
+    if (!isSchemaMismatch(err)) throw err;
+    return fetch(false, enrollmentBaseSelect, studentBaseSelect);
+  }
 }
 
 export async function getStudentResults(studentId: string, actor: AuthUser) {
@@ -184,27 +225,66 @@ export async function getStudentResults(studentId: string, actor: AuthUser) {
     throw new AppError(403, "Students can only view their own results");
   }
 
-  const student = assertFound(
-    await prisma.student.findUnique({
-      where: { id: studentId },
-      include: { schoolClass: true, user: { select: { fullName: true } } },
-    }),
-    "Student not found"
-  );
+  let student;
+  try {
+    student = assertFound(
+      await prisma.student.findUnique({
+        where: { id: studentId },
+        select: {
+          ...studentSelectWithStatus,
+          schoolClass: true,
+          user: { select: { fullName: true } },
+        },
+      }),
+      "Student not found"
+    );
+  } catch (err) {
+    if (!isSchemaMismatch(err)) throw err;
+    student = assertFound(
+      await prisma.student.findUnique({
+        where: { id: studentId },
+        select: {
+          ...studentBaseSelect,
+          schoolClass: true,
+          user: { select: { fullName: true } },
+        },
+      }),
+      "Student not found"
+    );
+  }
+  student = withAcademicStatus(student);
 
-  const enrollments = await prisma.enrollment.findMany({
-    where: { studentId },
-    include: {
-      subject: true,
-      score: { include: { teacher: true } },
-    },
-    orderBy: [{ session: "desc" }, { term: "asc" }, { createdAt: "asc" }],
-  });
+  let enrollments;
+  try {
+    enrollments = await prisma.enrollment.findMany({
+      where: { studentId },
+      include: {
+        subject: true,
+        score: { include: { teacher: true } },
+      },
+      orderBy: [{ session: "desc" }, { term: "asc" }, { createdAt: "asc" }],
+    });
+  } catch (err) {
+    if (!isSchemaMismatch(err)) throw err;
+    enrollments = await prisma.enrollment.findMany({
+      where: { studentId },
+      include: {
+        subject: true,
+        score: { include: { teacher: true } },
+      },
+      orderBy: [{ session: "desc" }, { createdAt: "asc" }],
+    });
+  }
 
-  const archived = await prisma.resultArchive.findMany({
-    where: { studentId },
-    orderBy: [{ session: "desc" }, { term: "asc" }],
-  });
+  let archived: Awaited<ReturnType<typeof prisma.resultArchive.findMany>> = [];
+  try {
+    archived = await prisma.resultArchive.findMany({
+      where: { studentId },
+      orderBy: [{ session: "desc" }, { term: "asc" }, { archivedAt: "desc" }],
+    });
+  } catch {
+    archived = [];
+  }
 
   const scored = enrollments.filter((e) => e.score);
   const average =
@@ -245,13 +325,16 @@ export async function getStudentResults(studentId: string, actor: AuthUser) {
       dateOfBirth: student.dateOfBirth,
     },
     sessions,
-    enrollments: enrollments.map((e) => ({
-      ...e,
-      resultStatus: e.score ? "GRADED" : "AWAITING_RESULT",
-      resultStatusLabel: e.score ? "Graded" : "Awaiting Result",
-      caScore: e.score?.assessment ?? null,
-      examScore: e.score?.exam ?? null,
-    })),
+    enrollments: enrollments.map((e) => {
+      const row = withTerm(e);
+      return {
+        ...row,
+        resultStatus: e.score ? "GRADED" : "AWAITING_RESULT",
+        resultStatusLabel: e.score ? "Graded" : "Awaiting Result",
+        caScore: e.score?.assessment ?? null,
+        examScore: e.score?.exam ?? null,
+      };
+    }),
     archivedResults: archived,
     summary: {
       enrolled: enrollments.length,

@@ -29,7 +29,9 @@ export async function createAnnouncement(input, actor) {
                 createdById: actor.id,
                 targetClassId: input.targetClassId ?? null,
                 targetUserId: input.targetUserId ?? null,
-                expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+                expiresAt: input.expiresAt && !Number.isNaN(Date.parse(input.expiresAt))
+                    ? new Date(input.expiresAt)
+                    : null,
             },
         });
     }
@@ -43,7 +45,9 @@ export async function createAnnouncement(input, actor) {
                 body: input.body,
                 audience: input.audience,
                 createdById: actor.id,
-                expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+                expiresAt: input.expiresAt && !Number.isNaN(Date.parse(input.expiresAt))
+                    ? new Date(input.expiresAt)
+                    : null,
             },
         });
     }
