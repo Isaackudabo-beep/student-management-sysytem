@@ -1,7 +1,7 @@
 "use client";
 
 // Purpose: Push-style notification drawer — full-screen sheet on mobile, panel on desktop.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { api, ApiRequestError } from "@/lib/api";
 import type { Announcement } from "@/lib/types";
@@ -11,7 +11,10 @@ export function NotificationBell() {
   const [items, setItems] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const lastFetchRef = useRef(0);
+
   const load = useCallback(async () => {
+    lastFetchRef.current = Date.now();
     setLoading(true);
     try {
       const res = await api<{ success: true; data: Announcement[] }>("/api/announcements/inbox");
@@ -23,10 +26,42 @@ export function NotificationBell() {
     }
   }, []);
 
+  // Poll only while the tab is visible to avoid draining mobile data in the background.
   useEffect(() => {
+    const POLL_MS = 300000; // 5 minutes
+    const MIN_GAP_MS = 60000; // don't refetch more than once a minute on focus
+
     void load();
-    const id = window.setInterval(() => void load(), 60000);
-    return () => window.clearInterval(id);
+
+    let id: number | undefined;
+    const start = () => {
+      if (id !== undefined) return;
+      id = window.setInterval(() => {
+        if (document.visibilityState === "visible") void load();
+      }, POLL_MS);
+    };
+    const stop = () => {
+      if (id === undefined) return;
+      window.clearInterval(id);
+      id = undefined;
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        if (Date.now() - lastFetchRef.current > MIN_GAP_MS) void load();
+        start();
+      } else {
+        stop();
+      }
+    };
+
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [load]);
 
   useEffect(() => {
@@ -63,8 +98,12 @@ export function NotificationBell() {
         aria-label={`Notifications${unread > 0 ? `, ${unread} unread` : ""}`}
         aria-expanded={open}
         onClick={() => {
-          setOpen((o) => !o);
-          void load();
+          setOpen((o) => {
+            const next = !o;
+            // Only refetch when opening, and not if we just fetched.
+            if (next && Date.now() - lastFetchRef.current > 15000) void load();
+            return next;
+          });
         }}
         className="relative inline-flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-sm font-semibold shadow-sm transition hover:bg-brand-soft"
       >
