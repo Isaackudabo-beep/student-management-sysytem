@@ -35,7 +35,7 @@ router.post("/:id/read", async (req, res, next) => {
 
 router.get("/", authorize("ADMIN"), validate(pageSchema, "query"), async (req, res, next) => {
   try {
-    const result = await announcementService.listAnnouncementsAdmin(req.query as never);
+    const result = await announcementService.listAnnouncementsAdmin(req.query as never, req.user!);
     res.json({ success: true, ...result });
   } catch (error) {
     next(error);
@@ -53,7 +53,7 @@ router.post("/", authorize("ADMIN"), validate(createAnnouncementSchema), async (
 
 router.delete("/:id", authorize("ADMIN"), async (req, res, next) => {
   try {
-    const data = await announcementService.deleteAnnouncement(req.params.id);
+    const data = await announcementService.deleteAnnouncement(req.params.id, req.user!);
     res.json({ success: true, data });
   } catch (error) {
     next(error);

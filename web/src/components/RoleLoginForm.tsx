@@ -9,6 +9,11 @@ import { ApiRequestError } from "@/lib/api";
 import type { Role } from "@/lib/types";
 
 const COPY: Record<Role, { title: string; blurb: string; demo: string }> = {
+  SUPER_ADMIN: {
+    title: "Platform Super Admin",
+    blurb: "Create and manage schools across the platform.",
+    demo: "superadmin@sms.local",
+  },
   ADMIN: {
     title: "Admin Portal",
     blurb: "Manage classes, students, teachers, and school announcements.",

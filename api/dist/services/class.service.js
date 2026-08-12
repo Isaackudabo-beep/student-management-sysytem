@@ -1,21 +1,27 @@
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
-export async function createClass(input) {
+import { assertSchoolMatch, requireSchoolId } from "../lib/schoolScope.js";
+export async function createClass(input, actor) {
+    const schoolId = requireSchoolId(actor);
     const level = input.level.toUpperCase();
     const arm = input.arm?.trim() ? input.arm.toUpperCase() : undefined;
     const name = input.name.trim().toUpperCase() || `${level}${arm ?? ""}`;
-    const existing = await prisma.schoolClass.findUnique({ where: { name } });
+    const existing = await prisma.schoolClass.findUnique({
+        where: { schoolId_name: { schoolId, name } },
+    });
     if (existing) {
         throw new AppError(409, `Class ${name} already exists`);
     }
     return prisma.schoolClass.create({
-        data: { name, level, arm },
+        data: { schoolId, name, level, arm },
         include: { _count: { select: { students: true } } },
     });
 }
-export async function listClasses(params) {
+export async function listClasses(params, actor) {
+    const schoolId = requireSchoolId(actor);
     const where = {
         AND: [
+            { schoolId },
             params.level ? { level: { equals: params.level, mode: "insensitive" } } : {},
             params.q
                 ? {
@@ -43,14 +49,26 @@ export async function listClasses(params) {
         meta: { total, page: params.page, limit: params.limit, pages: Math.ceil(total / params.limit) || 1 },
     };
 }
-export async function getClassById(id) {
-    return assertFound(await prisma.schoolClass.findUnique({
+export async function getClassById(id, actor) {
+    const schoolClass = assertFound(await prisma.schoolClass.findUnique({
         where: { id },
         include: { students: true, _count: { select: { students: true } } },
     }), "Class not found");
+    assertSchoolMatch(actor, schoolClass.schoolId, "Class");
+    return schoolClass;
 }
-export async function updateClass(id, input) {
-    await assertFound(await prisma.schoolClass.findUnique({ where: { id } }), "Class not found");
+export async function updateClass(id, input, actor) {
+    const schoolClass = assertFound(await prisma.schoolClass.findUnique({ where: { id } }), "Class not found");
+    assertSchoolMatch(actor, schoolClass.schoolId, "Class");
+    if (input.name) {
+        const name = input.name.toUpperCase();
+        const clash = await prisma.schoolClass.findUnique({
+            where: { schoolId_name: { schoolId: schoolClass.schoolId, name } },
+        });
+        if (clash && clash.id !== id) {
+            throw new AppError(409, `Class ${name} already exists`);
+        }
+    }
     return prisma.schoolClass.update({
         where: { id },
         data: {
@@ -60,11 +78,12 @@ export async function updateClass(id, input) {
         },
     });
 }
-export async function deleteClass(id) {
+export async function deleteClass(id, actor) {
     const schoolClass = assertFound(await prisma.schoolClass.findUnique({
         where: { id },
         include: { _count: { select: { students: true } } },
     }), "Class not found");
+    assertSchoolMatch(actor, schoolClass.schoolId, "Class");
     if (schoolClass._count.students > 0) {
         throw new AppError(400, "Cannot delete a class that still has students");
     }

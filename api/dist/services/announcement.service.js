@@ -1,5 +1,6 @@
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
+import { assertSchoolMatch, requireSchoolId } from "../lib/schoolScope.js";
 function baseAudienceForRole(role) {
     if (role === "ADMIN")
         return ["ALL", "ADMINS", "STUDENTS", "TEACHERS"];
@@ -8,6 +9,7 @@ function baseAudienceForRole(role) {
     return ["ALL", "STUDENTS"];
 }
 export async function createAnnouncement(input, actor) {
+    const schoolId = requireSchoolId(actor);
     if (input.audience === "CLASS" && !input.targetClassId) {
         throw new AppError(400, "targetClassId is required when audience is CLASS");
     }
@@ -15,23 +17,27 @@ export async function createAnnouncement(input, actor) {
         throw new AppError(400, "targetUserId is required when audience is USER");
     }
     if (input.targetClassId) {
-        await assertFound(await prisma.schoolClass.findUnique({ where: { id: input.targetClassId } }), "Class not found");
+        const cls = assertFound(await prisma.schoolClass.findUnique({ where: { id: input.targetClassId } }), "Class not found");
+        assertSchoolMatch(actor, cls.schoolId, "Class");
     }
     if (input.targetUserId) {
-        await assertFound(await prisma.user.findUnique({ where: { id: input.targetUserId } }), "User not found");
+        const target = assertFound(await prisma.user.findUnique({ where: { id: input.targetUserId } }), "User not found");
+        assertSchoolMatch(actor, target.schoolId, "User");
     }
+    const expiresAt = input.expiresAt && !Number.isNaN(Date.parse(input.expiresAt))
+        ? new Date(input.expiresAt)
+        : null;
     try {
         return await prisma.announcement.create({
             data: {
+                schoolId,
                 title: input.title,
                 body: input.body,
                 audience: input.audience,
                 createdById: actor.id,
                 targetClassId: input.targetClassId ?? null,
                 targetUserId: input.targetUserId ?? null,
-                expiresAt: input.expiresAt && !Number.isNaN(Date.parse(input.expiresAt))
-                    ? new Date(input.expiresAt)
-                    : null,
+                expiresAt,
             },
         });
     }
@@ -41,22 +47,34 @@ export async function createAnnouncement(input, actor) {
         }
         return prisma.announcement.create({
             data: {
+                schoolId,
                 title: input.title,
                 body: input.body,
                 audience: input.audience,
                 createdById: actor.id,
-                expiresAt: input.expiresAt && !Number.isNaN(Date.parse(input.expiresAt))
-                    ? new Date(input.expiresAt)
-                    : null,
+                expiresAt,
             },
         });
     }
 }
 /** Internal helper for auto-notifications (results published, promotion, etc.). */
 export async function createSystemAnnouncement(input) {
+    let schoolId = input.schoolId;
+    if (!schoolId) {
+        const author = await prisma.user.findUnique({
+            where: { id: input.createdById },
+            select: { schoolId: true },
+        });
+        schoolId = author?.schoolId ?? undefined;
+    }
+    if (!schoolId) {
+        console.warn("createSystemAnnouncement skipped: no schoolId");
+        return null;
+    }
     try {
         return await prisma.announcement.create({
             data: {
+                schoolId,
                 title: input.title,
                 body: input.body,
                 audience: input.audience,
@@ -69,6 +87,7 @@ export async function createSystemAnnouncement(input) {
     catch {
         return prisma.announcement.create({
             data: {
+                schoolId,
                 title: input.title,
                 body: input.body,
                 audience: input.audience === "CLASS" || input.audience === "USER" ? "ALL" : input.audience,
@@ -77,10 +96,12 @@ export async function createSystemAnnouncement(input) {
         });
     }
 }
-export async function listAnnouncementsAdmin(params) {
+export async function listAnnouncementsAdmin(params, actor) {
+    const schoolId = requireSchoolId(actor);
     const [total, data] = await Promise.all([
-        prisma.announcement.count(),
+        prisma.announcement.count({ where: { schoolId } }),
         prisma.announcement.findMany({
+            where: { schoolId },
             skip: (params.page - 1) * params.limit,
             take: params.limit,
             orderBy: { publishedAt: "desc" },
@@ -102,13 +123,16 @@ export async function listAnnouncementsAdmin(params) {
     };
 }
 async function visibleWhereLegacy(actor) {
+    const schoolId = requireSchoolId(actor);
     const now = new Date();
     return {
+        schoolId,
         audience: { in: baseAudienceForRole(actor.role) },
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
     };
 }
 async function visibleWhereTargeted(actor) {
+    const schoolId = requireSchoolId(actor);
     const now = new Date();
     const notExpired = { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] };
     const or = [
@@ -127,7 +151,7 @@ async function visibleWhereTargeted(actor) {
     if (actor.role === "ADMIN") {
         or.push({ audience: "CLASS" }, { audience: "USER" });
     }
-    return { AND: [notExpired, { OR: or }] };
+    return { AND: [{ schoolId }, notExpired, { OR: or }] };
 }
 export async function getInbox(actor) {
     const mapRow = (a) => ({
@@ -191,10 +215,12 @@ export async function getUnreadCount(actor) {
     return inbox.filter((n) => !n.read).length;
 }
 export async function markRead(announcementId, actor) {
-    await assertFound(await prisma.announcement.findUnique({
+    const schoolId = requireSchoolId(actor);
+    const row = assertFound(await prisma.announcement.findUnique({
         where: { id: announcementId },
-        select: { id: true },
+        select: { id: true, schoolId: true },
     }), "Announcement not found");
+    assertSchoolMatch(actor, row.schoolId, "Announcement");
     await prisma.announcementRead.upsert({
         where: {
             userId_announcementId: { userId: actor.id, announcementId },
@@ -204,8 +230,9 @@ export async function markRead(announcementId, actor) {
     });
     return { message: "Marked as read" };
 }
-export async function deleteAnnouncement(id) {
-    await assertFound(await prisma.announcement.findUnique({ where: { id }, select: { id: true } }), "Announcement not found");
+export async function deleteAnnouncement(id, actor) {
+    const row = assertFound(await prisma.announcement.findUnique({ where: { id }, select: { id: true, schoolId: true } }), "Announcement not found");
+    assertSchoolMatch(actor, row.schoolId, "Announcement");
     await prisma.announcement.delete({ where: { id } });
     return { message: "Announcement deleted" };
 }

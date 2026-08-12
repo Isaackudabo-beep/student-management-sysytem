@@ -1,17 +1,29 @@
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
-export async function createSubject(input) {
+import { assertSchoolMatch, requireSchoolId } from "../lib/schoolScope.js";
+export async function createSubject(input, actor) {
+    const schoolId = requireSchoolId(actor);
+    const code = input.code.toUpperCase();
+    const existing = await prisma.subject.findUnique({
+        where: { schoolId_code: { schoolId, code } },
+    });
+    if (existing) {
+        throw new AppError(409, `Subject code ${code} already exists`);
+    }
     return prisma.subject.create({
         data: {
+            schoolId,
             ...input,
-            code: input.code.toUpperCase(),
+            code,
             level: input.level.toUpperCase(),
         },
     });
 }
-export async function listSubjects(params) {
+export async function listSubjects(params, actor) {
+    const schoolId = requireSchoolId(actor);
     const where = {
         AND: [
+            { schoolId },
             params.level ? { level: { equals: params.level, mode: "insensitive" } } : {},
             params.q
                 ? {
@@ -41,17 +53,29 @@ export async function listSubjects(params) {
         meta: { total, page: params.page, limit: params.limit, pages: Math.ceil(total / params.limit) || 1 },
     };
 }
-export async function getSubjectById(id) {
-    return assertFound(await prisma.subject.findUnique({
+export async function getSubjectById(id, actor) {
+    const subject = assertFound(await prisma.subject.findUnique({
         where: { id },
         include: {
             teachers: { include: { teacher: true } },
             enrollments: { include: { student: true, score: true } },
         },
     }), "Subject not found");
+    assertSchoolMatch(actor, subject.schoolId, "Subject");
+    return subject;
 }
-export async function updateSubject(id, input) {
-    await assertFound(await prisma.subject.findUnique({ where: { id } }), "Subject not found");
+export async function updateSubject(id, input, actor) {
+    const subject = assertFound(await prisma.subject.findUnique({ where: { id } }), "Subject not found");
+    assertSchoolMatch(actor, subject.schoolId, "Subject");
+    if (input.code) {
+        const code = input.code.toUpperCase();
+        const clash = await prisma.subject.findUnique({
+            where: { schoolId_code: { schoolId: subject.schoolId, code } },
+        });
+        if (clash && clash.id !== id) {
+            throw new AppError(409, `Subject code ${code} already exists`);
+        }
+    }
     return prisma.subject.update({
         where: { id },
         data: {
@@ -61,7 +85,7 @@ export async function updateSubject(id, input) {
         },
     });
 }
-export async function deleteSubject(id) {
+export async function deleteSubject(id, actor) {
     const subject = assertFound(await prisma.subject.findUnique({
         where: { id },
         include: {
@@ -69,6 +93,7 @@ export async function deleteSubject(id) {
             teachers: true,
         },
     }), "Subject not found");
+    assertSchoolMatch(actor, subject.schoolId, "Subject");
     const hasScores = subject.enrollments.some((e) => e.score);
     if (hasScores) {
         throw new AppError(400, "A subject with existing scores cannot be deleted until those scores are removed.");

@@ -1,6 +1,7 @@
 // Purpose: Score entry — teachers only for subjects they teach; server computes grade.
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
+import { assertSchoolMatch, requireSchoolId } from "../lib/schoolScope.js";
 import { calculateGrade } from "../utils/grades.js";
 import type { AuthUser } from "../middleware/auth.js";
 import {
@@ -27,6 +28,7 @@ export async function upsertScore(
   input: { enrollmentId: string; assessment: number; exam: number },
   actor: AuthUser
 ) {
+  requireSchoolId(actor);
   if (actor.role !== "TEACHER" || !actor.teacherId) {
     throw new AppError(403, "Only teachers can enter scores");
   }
@@ -34,10 +36,11 @@ export async function upsertScore(
   const enrollment = assertFound(
     await prisma.enrollment.findUnique({
       where: { id: input.enrollmentId },
-      include: { score: true, subject: true },
+      include: { score: true, subject: true, student: true },
     }),
     "Enrollment not found"
   );
+  assertSchoolMatch(actor, enrollment.student.schoolId, "Enrollment");
 
   await assertTeacherCanScore(actor.teacherId, enrollment.subjectId, enrollment.session);
 
@@ -91,7 +94,7 @@ async function notifyScoreSaved(
     total: number;
     grade: string;
     enrollment: {
-      student: { userId: string; firstName: string; lastName: string };
+      student: { userId: string; firstName: string; lastName: string; schoolId: string };
       subject: { code: string; title: string };
       session: string;
       term: string;
@@ -102,6 +105,7 @@ async function notifyScoreSaved(
   try {
     const { createSystemAnnouncement } = await import("./announcement.service.js");
     await createSystemAnnouncement({
+      schoolId: score.enrollment.student.schoolId,
       title: `Result published — ${score.enrollment.subject.code}`,
       body: `Your score in ${score.enrollment.subject.title} (${score.enrollment.session}, ${score.enrollment.term ?? "FIRST"}) is ${score.total} (${score.grade}).`,
       audience: "USER",
@@ -124,6 +128,7 @@ export async function listScores(params: {
   limit: number;
 }) {
   const { actor } = params;
+  const schoolId = requireSchoolId(actor);
 
   if (actor.role === "STUDENT") {
     if (!actor.studentId) {
@@ -150,11 +155,14 @@ export async function listScores(params: {
 
   function buildEnrollmentFilter(includeTerm: boolean) {
     const base: Record<string, unknown> = {
+      student: {
+        schoolId,
+        ...(params.classId ? { classId: params.classId } : {}),
+      },
       ...(params.studentId ? { studentId: params.studentId } : {}),
       ...(params.subjectId ? { subjectId: params.subjectId } : {}),
       ...(params.session ? { session: params.session } : {}),
       ...(includeTerm && params.term ? { term: params.term } : {}),
-      ...(params.classId ? { student: { classId: params.classId } } : {}),
       ...(assignmentOr ? { OR: assignmentOr } : {}),
     };
     return base;
@@ -221,6 +229,7 @@ export async function listScores(params: {
 }
 
 export async function getStudentResults(studentId: string, actor: AuthUser) {
+  requireSchoolId(actor);
   if (actor.role === "STUDENT" && actor.studentId !== studentId) {
     throw new AppError(403, "Students can only view their own results");
   }
@@ -252,6 +261,7 @@ export async function getStudentResults(studentId: string, actor: AuthUser) {
       "Student not found"
     );
   }
+  assertSchoolMatch(actor, student.schoolId, "Student");
   student = withAcademicStatus(student);
 
   let enrollments;
@@ -346,13 +356,15 @@ export async function getStudentResults(studentId: string, actor: AuthUser) {
 }
 
 export async function deleteScore(id: string, actor: AuthUser) {
+  requireSchoolId(actor);
   const score = assertFound(
     await prisma.score.findUnique({
       where: { id },
-      include: { enrollment: true },
+      include: { enrollment: { include: { student: true } } },
     }),
     "Score not found"
   );
+  assertSchoolMatch(actor, score.enrollment.student.schoolId, "Score");
 
   if (actor.role === "TEACHER") {
     if (!actor.teacherId || score.teacherId !== actor.teacherId) {

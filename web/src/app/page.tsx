@@ -48,11 +48,12 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      <div className="mt-10 grid gap-3 sm:grid-cols-3">
+      <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           ["/login/admin", "Admin Login"],
           ["/login/teacher", "Teacher Login"],
           ["/login/student", "Student Login"],
+          ["/admin/login", "Super Admin"],
         ].map(([href, label]) => (
           <Link
             key={href}

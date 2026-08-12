@@ -11,9 +11,9 @@ const router = Router();
 router.use(authenticate);
 router.use(authorize("ADMIN"));
 
-router.get("/sessions", async (_req, res, next) => {
+router.get("/sessions", async (req, res, next) => {
   try {
-    const data = await termService.listActiveSessions();
+    const data = await termService.listActiveSessions(req.user!);
     res.json({ success: true, data });
   } catch (error) {
     next(error);
@@ -25,6 +25,7 @@ router.post("/close", validate(closeTermSchema), async (req, res, next) => {
     const data = await termService.closeTerm({
       ...req.body,
       actorId: req.user!.id,
+      schoolId: req.user!.schoolId!,
     });
     res.json({ success: true, data });
   } catch (error) {
@@ -38,6 +39,7 @@ router.post("/promote", validate(promoteStudentsSchema), async (req, res, next) 
       session: req.body.session,
       term: req.body.term,
       actorId: req.user!.id,
+      schoolId: req.user!.schoolId!,
     });
     res.json({ success: true, data });
   } catch (error) {

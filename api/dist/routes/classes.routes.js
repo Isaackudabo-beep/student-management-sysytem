@@ -8,7 +8,7 @@ const router = Router();
 router.use(authenticate);
 router.get("/", validate(searchQuerySchema, "query"), async (req, res, next) => {
     try {
-        const result = await classService.listClasses(req.query);
+        const result = await classService.listClasses(req.query, req.user);
         res.json({ success: true, ...result });
     }
     catch (error) {
@@ -17,7 +17,7 @@ router.get("/", validate(searchQuerySchema, "query"), async (req, res, next) => 
 });
 router.get("/:id", async (req, res, next) => {
     try {
-        const data = await classService.getClassById(req.params.id);
+        const data = await classService.getClassById(req.params.id, req.user);
         res.json({ success: true, data });
     }
     catch (error) {
@@ -26,7 +26,7 @@ router.get("/:id", async (req, res, next) => {
 });
 router.post("/", authorize("ADMIN"), validate(createSchoolClassSchema), async (req, res, next) => {
     try {
-        const data = await classService.createClass(req.body);
+        const data = await classService.createClass(req.body, req.user);
         res.status(201).json({ success: true, data });
     }
     catch (error) {
@@ -35,7 +35,7 @@ router.post("/", authorize("ADMIN"), validate(createSchoolClassSchema), async (r
 });
 router.patch("/:id", authorize("ADMIN"), validate(updateSchoolClassSchema), async (req, res, next) => {
     try {
-        const data = await classService.updateClass(req.params.id, req.body);
+        const data = await classService.updateClass(req.params.id, req.body, req.user);
         res.json({ success: true, data });
     }
     catch (error) {
@@ -44,7 +44,7 @@ router.patch("/:id", authorize("ADMIN"), validate(updateSchoolClassSchema), asyn
 });
 router.delete("/:id", authorize("ADMIN"), async (req, res, next) => {
     try {
-        const data = await classService.deleteClass(req.params.id);
+        const data = await classService.deleteClass(req.params.id, req.user);
         res.json({ success: true, data });
     }
     catch (error) {

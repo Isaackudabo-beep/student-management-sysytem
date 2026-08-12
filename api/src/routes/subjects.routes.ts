@@ -15,7 +15,7 @@ router.use(authenticate);
 
 router.get("/", authorize("ADMIN", "TEACHER"), validate(searchQuerySchema, "query"), async (req, res, next) => {
   try {
-    const result = await subjectService.listSubjects(req.query as never);
+    const result = await subjectService.listSubjects(req.query as never, req.user!);
     res.json({ success: true, ...result });
   } catch (error) {
     next(error);
@@ -24,7 +24,7 @@ router.get("/", authorize("ADMIN", "TEACHER"), validate(searchQuerySchema, "quer
 
 router.get("/:id", authorize("ADMIN", "TEACHER"), async (req, res, next) => {
   try {
-    const subject = await subjectService.getSubjectById(req.params.id);
+    const subject = await subjectService.getSubjectById(req.params.id, req.user!);
     res.json({ success: true, data: subject });
   } catch (error) {
     next(error);
@@ -33,7 +33,7 @@ router.get("/:id", authorize("ADMIN", "TEACHER"), async (req, res, next) => {
 
 router.post("/", authorize("ADMIN"), validate(createSubjectSchema), async (req, res, next) => {
   try {
-    const subject = await subjectService.createSubject(req.body);
+    const subject = await subjectService.createSubject(req.body, req.user!);
     res.status(201).json({ success: true, data: subject });
   } catch (error) {
     next(error);
@@ -42,7 +42,7 @@ router.post("/", authorize("ADMIN"), validate(createSubjectSchema), async (req, 
 
 router.patch("/:id", authorize("ADMIN"), validate(updateSubjectSchema), async (req, res, next) => {
   try {
-    const subject = await subjectService.updateSubject(req.params.id, req.body);
+    const subject = await subjectService.updateSubject(req.params.id, req.body, req.user!);
     res.json({ success: true, data: subject });
   } catch (error) {
     next(error);
@@ -51,7 +51,7 @@ router.patch("/:id", authorize("ADMIN"), validate(updateSubjectSchema), async (r
 
 router.delete("/:id", authorize("ADMIN"), async (req, res, next) => {
   try {
-    const result = await subjectService.deleteSubject(req.params.id);
+    const result = await subjectService.deleteSubject(req.params.id, req.user!);
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);

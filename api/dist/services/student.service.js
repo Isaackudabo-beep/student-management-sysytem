@@ -2,8 +2,10 @@
 import bcrypt from "bcryptjs";
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
+import { assertSchoolMatch, requireSchoolId } from "../lib/schoolScope.js";
 import { isSchemaMismatch, studentBaseSelect, studentSelectWithStatus, withAcademicStatus, } from "../lib/safeSelects.js";
-export async function createStudent(input) {
+export async function createStudent(input, actor) {
+    const schoolId = requireSchoolId(actor);
     if (input.subjectIds.length < 5 || input.subjectIds.length > 11) {
         throw new AppError(400, "Select between 5 and 11 subjects");
     }
@@ -12,8 +14,9 @@ export async function createStudent(input) {
         throw new AppError(400, "Duplicate subjects are not allowed");
     }
     const schoolClass = assertFound(await prisma.schoolClass.findUnique({ where: { id: input.classId } }), "Class not found");
+    assertSchoolMatch(actor, schoolClass.schoolId, "Class");
     const subjects = await prisma.subject.findMany({
-        where: { id: { in: uniqueSubjectIds } },
+        where: { id: { in: uniqueSubjectIds }, schoolId },
     });
     if (subjects.length !== uniqueSubjectIds.length) {
         throw new AppError(400, "One or more selected subjects were not found");
@@ -33,11 +36,13 @@ export async function createStudent(input) {
                 email,
                 passwordHash,
                 role: "STUDENT",
+                schoolId,
                 mustChangePassword: true,
             },
         });
         const student = await tx.student.create({
             data: {
+                schoolId,
                 userId: user.id,
                 admissionNumber,
                 matricNumber: admissionNumber,
@@ -75,9 +80,11 @@ export async function createStudent(input) {
         });
     });
 }
-export async function listStudents(params) {
+export async function listStudents(params, actor) {
+    const schoolId = requireSchoolId(actor);
     const where = {
         AND: [
+            { schoolId },
             params.department ? { department: { contains: params.department, mode: "insensitive" } } : {},
             params.level ? { level: { equals: params.level, mode: "insensitive" } } : {},
             params.classId ? { classId: params.classId } : {},
@@ -127,7 +134,8 @@ export async function listStudents(params) {
         return fetch(studentBaseSelect);
     }
 }
-export async function getStudentById(id) {
+export async function getStudentById(id, actor) {
+    requireSchoolId(actor);
     const userSelect = {
         id: true,
         fullName: true,
@@ -171,6 +179,7 @@ export async function getStudentById(id) {
                 schoolClass: true,
             },
         }), "Student not found");
+        assertSchoolMatch(actor, student.schoolId, "Student");
         return { ...withAcademicStatus(student), enrollments, archivedResults };
     }
     let student;
@@ -195,11 +204,13 @@ export async function getStudentById(id) {
                 : "Active",
     };
 }
-export async function updateStudent(id, input) {
-    await assertFound(await prisma.student.findUnique({ where: { id } }), "Student not found");
+export async function updateStudent(id, input, actor) {
+    const existing = assertFound(await prisma.student.findUnique({ where: { id } }), "Student not found");
+    assertSchoolMatch(actor, existing.schoolId, "Student");
     let level;
     if (input.classId) {
         const schoolClass = assertFound(await prisma.schoolClass.findUnique({ where: { id: input.classId } }), "Class not found");
+        assertSchoolMatch(actor, schoolClass.schoolId, "Class");
         level = schoolClass.level;
     }
     return prisma.$transaction(async (tx) => {
@@ -237,11 +248,12 @@ export async function updateStudent(id, input) {
         });
     });
 }
-export async function deleteStudent(id) {
+export async function deleteStudent(id, actor) {
     const student = assertFound(await prisma.student.findUnique({
         where: { id },
         include: { enrollments: { include: { score: true } } },
     }), "Student not found");
+    assertSchoolMatch(actor, student.schoolId, "Student");
     const hasScores = student.enrollments.some((e) => e.score);
     if (hasScores || student.enrollments.length > 0) {
         throw new AppError(400, "Cannot delete student with enrollments or scores. Remove related records first.");

@@ -3,15 +3,21 @@ import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
+import { assertSchoolMatch, requireSchoolId } from "../lib/schoolScope.js";
+import type { AuthUser } from "../middleware/auth.js";
 
-export async function createTeacher(input: {
-  email: string;
-  password: string;
-  firstName: string;
-  lastName: string;
-  phone?: string;
-  department: string;
-}) {
+export async function createTeacher(
+  input: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+    department: string;
+  },
+  actor: AuthUser
+) {
+  const schoolId = requireSchoolId(actor);
   const email = input.email.toLowerCase();
   const passwordHash = await bcrypt.hash(input.password, 12);
 
@@ -22,11 +28,13 @@ export async function createTeacher(input: {
         email,
         passwordHash,
         role: "TEACHER",
+        schoolId,
       },
     });
 
     return tx.teacher.create({
       data: {
+        schoolId,
         userId: user.id,
         firstName: input.firstName,
         lastName: input.lastName,
@@ -50,12 +58,14 @@ export async function updateTeacher(
     phone: string | null;
     department: string;
     email: string;
-  }>
+  }>,
+  actor: AuthUser
 ) {
   const teacher = assertFound(
     await prisma.teacher.findUnique({ where: { id } }),
     "Teacher not found"
   );
+  assertSchoolMatch(actor, teacher.schoolId, "Teacher");
 
   const email = input.email?.toLowerCase();
   const firstName = input.firstName ?? teacher.firstName;
@@ -89,17 +99,24 @@ export async function updateTeacher(
   });
 }
 
-export async function listTeachers(params: { q?: string; page: number; limit: number }) {
-  const where: Prisma.TeacherWhereInput = params.q
-    ? {
-        OR: [
-          { firstName: { contains: params.q, mode: "insensitive" } },
-          { lastName: { contains: params.q, mode: "insensitive" } },
-          { email: { contains: params.q, mode: "insensitive" } },
-          { department: { contains: params.q, mode: "insensitive" } },
-        ],
-      }
-    : {};
+export async function listTeachers(
+  params: { q?: string; page: number; limit: number },
+  actor: AuthUser
+) {
+  const schoolId = requireSchoolId(actor);
+  const where: Prisma.TeacherWhereInput = {
+    schoolId,
+    ...(params.q
+      ? {
+          OR: [
+            { firstName: { contains: params.q, mode: "insensitive" } },
+            { lastName: { contains: params.q, mode: "insensitive" } },
+            { email: { contains: params.q, mode: "insensitive" } },
+            { department: { contains: params.q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
 
   const [total, data] = await Promise.all([
     prisma.teacher.count({ where }),
@@ -124,7 +141,7 @@ export async function listTeachers(params: { q?: string; page: number; limit: nu
   };
 }
 
-export async function getTeacherById(id: string) {
+export async function getTeacherById(id: string, actor: AuthUser) {
   const teacher = assertFound(
     await prisma.teacher.findUnique({
       where: { id },
@@ -135,19 +152,32 @@ export async function getTeacherById(id: string) {
     }),
     "Teacher not found"
   );
+  assertSchoolMatch(actor, teacher.schoolId, "Teacher");
   return {
     ...teacher,
     avatarInitials: `${teacher.firstName[0] ?? ""}${teacher.lastName[0] ?? ""}`.toUpperCase(),
   };
 }
 
-export async function assignTeacherToSubject(input: {
-  teacherId: string;
-  subjectId: string;
-  session: string;
-}) {
-  await assertFound(await prisma.teacher.findUnique({ where: { id: input.teacherId } }), "Teacher not found");
-  await assertFound(await prisma.subject.findUnique({ where: { id: input.subjectId } }), "Subject not found");
+export async function assignTeacherToSubject(
+  input: {
+    teacherId: string;
+    subjectId: string;
+    session: string;
+  },
+  actor: AuthUser
+) {
+  const schoolId = requireSchoolId(actor);
+  const teacher = assertFound(
+    await prisma.teacher.findUnique({ where: { id: input.teacherId } }),
+    "Teacher not found"
+  );
+  assertSchoolMatch(actor, teacher.schoolId, "Teacher");
+  const subject = assertFound(
+    await prisma.subject.findUnique({ where: { id: input.subjectId } }),
+    "Subject not found"
+  );
+  assertSchoolMatch(actor, subject.schoolId, "Subject");
 
   return prisma.$transaction(async (tx) => {
     // A subject belongs to a single teacher per session: drop any other holder first.
@@ -156,6 +186,7 @@ export async function assignTeacherToSubject(input: {
         subjectId: input.subjectId,
         session: input.session,
         teacherId: { not: input.teacherId },
+        teacher: { schoolId },
       },
     });
 
@@ -174,13 +205,23 @@ export async function assignTeacherToSubject(input: {
   });
 }
 
-export async function assignTeacherSubjects(input: {
-  teacherId: string;
-  subjectIds: string[];
-  session: string;
-}) {
-  await assertFound(await prisma.teacher.findUnique({ where: { id: input.teacherId } }), "Teacher not found");
-  const subjects = await prisma.subject.findMany({ where: { id: { in: input.subjectIds } } });
+export async function assignTeacherSubjects(
+  input: {
+    teacherId: string;
+    subjectIds: string[];
+    session: string;
+  },
+  actor: AuthUser
+) {
+  const schoolId = requireSchoolId(actor);
+  const teacher = assertFound(
+    await prisma.teacher.findUnique({ where: { id: input.teacherId } }),
+    "Teacher not found"
+  );
+  assertSchoolMatch(actor, teacher.schoolId, "Teacher");
+  const subjects = await prisma.subject.findMany({
+    where: { id: { in: input.subjectIds }, schoolId },
+  });
   if (subjects.length !== input.subjectIds.length) {
     throw new AppError(400, "One or more subjects were not found");
   }
@@ -192,6 +233,7 @@ export async function assignTeacherSubjects(input: {
         subjectId: { in: input.subjectIds },
         session: input.session,
         teacherId: { not: input.teacherId },
+        teacher: { schoolId },
       },
     });
 
@@ -217,30 +259,38 @@ export async function assignTeacherSubjects(input: {
   });
 }
 
-export async function removeTeacherSubject(assignmentId: string) {
-  await assertFound(
-    await prisma.teacherSubject.findUnique({ where: { id: assignmentId } }),
+export async function removeTeacherSubject(assignmentId: string, actor: AuthUser) {
+  const assignment = assertFound(
+    await prisma.teacherSubject.findUnique({
+      where: { id: assignmentId },
+      include: { teacher: true },
+    }),
     "Assignment not found"
   );
+  assertSchoolMatch(actor, assignment.teacher.schoolId, "Assignment");
   await prisma.teacherSubject.delete({ where: { id: assignmentId } });
   return { message: "Subject removed from teacher" };
 }
 
 /** Subjects with no teacher assignment for the given session. */
-export async function listUnassignedSubjects(session: string) {
+export async function listUnassignedSubjects(session: string, actor: AuthUser) {
+  const schoolId = requireSchoolId(actor);
   const assigned = await prisma.teacherSubject.findMany({
-    where: { session },
+    where: { session, subject: { schoolId } },
     select: { subjectId: true },
   });
   const assignedIds = [...new Set(assigned.map((a) => a.subjectId))];
 
   return prisma.subject.findMany({
-    where: assignedIds.length ? { id: { notIn: assignedIds } } : {},
+    where: {
+      schoolId,
+      ...(assignedIds.length ? { id: { notIn: assignedIds } } : {}),
+    },
     orderBy: [{ level: "asc" }, { code: "asc" }],
   });
 }
 
-export async function deleteTeacher(id: string) {
+export async function deleteTeacher(id: string, actor: AuthUser) {
   const teacher = assertFound(
     await prisma.teacher.findUnique({
       where: { id },
@@ -248,6 +298,7 @@ export async function deleteTeacher(id: string) {
     }),
     "Teacher not found"
   );
+  assertSchoolMatch(actor, teacher.schoolId, "Teacher");
 
   if (teacher.scores.length > 0) {
     throw new AppError(

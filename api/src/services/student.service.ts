@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
+import { assertSchoolMatch, requireSchoolId } from "../lib/schoolScope.js";
+import type { AuthUser } from "../middleware/auth.js";
 import {
   isSchemaMismatch,
   studentBaseSelect,
@@ -30,7 +32,9 @@ type CreateStudentInput = {
   fullName?: string;
 };
 
-export async function createStudent(input: CreateStudentInput) {
+export async function createStudent(input: CreateStudentInput, actor: AuthUser) {
+  const schoolId = requireSchoolId(actor);
+
   if (input.subjectIds.length < 5 || input.subjectIds.length > 11) {
     throw new AppError(400, "Select between 5 and 11 subjects");
   }
@@ -44,9 +48,10 @@ export async function createStudent(input: CreateStudentInput) {
     await prisma.schoolClass.findUnique({ where: { id: input.classId } }),
     "Class not found"
   );
+  assertSchoolMatch(actor, schoolClass.schoolId, "Class");
 
   const subjects = await prisma.subject.findMany({
-    where: { id: { in: uniqueSubjectIds } },
+    where: { id: { in: uniqueSubjectIds }, schoolId },
   });
 
   if (subjects.length !== uniqueSubjectIds.length) {
@@ -75,12 +80,14 @@ export async function createStudent(input: CreateStudentInput) {
         email,
         passwordHash,
         role: "STUDENT",
+        schoolId,
         mustChangePassword: true,
       },
     });
 
     const student = await tx.student.create({
       data: {
+        schoolId,
         userId: user.id,
         admissionNumber,
         matricNumber: admissionNumber,
@@ -121,16 +128,21 @@ export async function createStudent(input: CreateStudentInput) {
   });
 }
 
-export async function listStudents(params: {
-  q?: string;
-  department?: string;
-  level?: string;
-  classId?: string;
-  page: number;
-  limit: number;
-}) {
+export async function listStudents(
+  params: {
+    q?: string;
+    department?: string;
+    level?: string;
+    classId?: string;
+    page: number;
+    limit: number;
+  },
+  actor: AuthUser
+) {
+  const schoolId = requireSchoolId(actor);
   const where: Prisma.StudentWhereInput = {
     AND: [
+      { schoolId },
       params.department ? { department: { contains: params.department, mode: "insensitive" } } : {},
       params.level ? { level: { equals: params.level, mode: "insensitive" } } : {},
       params.classId ? { classId: params.classId } : {},
@@ -182,7 +194,8 @@ export async function listStudents(params: {
   }
 }
 
-export async function getStudentById(id: string) {
+export async function getStudentById(id: string, actor: AuthUser) {
+  requireSchoolId(actor);
   const userSelect = {
     id: true,
     fullName: true,
@@ -229,6 +242,7 @@ export async function getStudentById(id: string) {
       }),
       "Student not found"
     );
+    assertSchoolMatch(actor, student.schoolId, "Student");
 
     return { ...withAcademicStatus(student), enrollments, archivedResults };
   }
@@ -272,9 +286,11 @@ export async function updateStudent(
     department: string;
     classId: string;
     fullName: string;
-  }>
+  }>,
+  actor: AuthUser
 ) {
-  await assertFound(await prisma.student.findUnique({ where: { id } }), "Student not found");
+  const existing = assertFound(await prisma.student.findUnique({ where: { id } }), "Student not found");
+  assertSchoolMatch(actor, existing.schoolId, "Student");
 
   let level: string | undefined;
   if (input.classId) {
@@ -282,6 +298,7 @@ export async function updateStudent(
       await prisma.schoolClass.findUnique({ where: { id: input.classId } }),
       "Class not found"
     );
+    assertSchoolMatch(actor, schoolClass.schoolId, "Class");
     level = schoolClass.level;
   }
 
@@ -324,7 +341,7 @@ export async function updateStudent(
   });
 }
 
-export async function deleteStudent(id: string) {
+export async function deleteStudent(id: string, actor: AuthUser) {
   const student = assertFound(
     await prisma.student.findUnique({
       where: { id },
@@ -332,6 +349,7 @@ export async function deleteStudent(id: string) {
     }),
     "Student not found"
   );
+  assertSchoolMatch(actor, student.schoolId, "Student");
 
   const hasScores = student.enrollments.some((e) => e.score);
   if (hasScores || student.enrollments.length > 0) {

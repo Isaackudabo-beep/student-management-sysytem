@@ -23,6 +23,7 @@ const prismaCliJs = path.join(apiRoot, "node_modules", "prisma", "build", "index
 const MIGRATIONS_TO_MARK = [
   "20260806140000_terms_archive_notifications",
   "20260807180000_ensure_schema_idempotent",
+  "20260811120000_multi_school_tenancy",
 ];
 
 function run(command, args, { shell = false, allowFail = false, env = process.env } = {}) {
@@ -92,6 +93,10 @@ runPrisma(["migrate", "deploy"], { allowFail: true });
 
 console.log("Ensuring admin@sms.local login...");
 run(process.execPath, [ensureAdminScript], { env: prismaEnv() });
+
+const ensureSuperAdminScript = path.join(apiRoot, "scripts", "ensure-super-admin.mjs");
+console.log("Ensuring superadmin@sms.local login...");
+run(process.execPath, [ensureSuperAdminScript], { env: prismaEnv() });
 
 console.log("Starting API:", entry);
 run(process.execPath, [entry]);

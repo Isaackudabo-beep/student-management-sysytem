@@ -24,6 +24,17 @@ async function main() {
   const passwordHash = await bcrypt.hash(password, 12);
 
   try {
+    const defaultSchool =
+      (await prisma.school.findFirst({ where: { code: "DEFAULT" } })) ||
+      (await prisma.school.create({
+        data: {
+          id: "school_default_legacy",
+          name: "Default School",
+          code: "DEFAULT",
+          status: "ACTIVE",
+        },
+      }));
+
     const existing = await prisma.user.findUnique({ where: { email } });
     if (!existing) {
       await prisma.user.create({
@@ -32,6 +43,7 @@ async function main() {
           email,
           passwordHash,
           role: "ADMIN",
+          schoolId: defaultSchool.id,
           mustChangePassword: false,
         },
       });
@@ -44,12 +56,13 @@ async function main() {
       } catch {
         hashOk = false;
       }
-      if (!hashOk || existing.role !== "ADMIN") {
+      if (!hashOk || existing.role !== "ADMIN" || !existing.schoolId) {
         await prisma.user.update({
           where: { id: existing.id },
           data: {
             passwordHash,
             role: "ADMIN",
+            schoolId: existing.schoolId || defaultSchool.id,
             mustChangePassword: false,
             fullName: existing.fullName || "System Admin",
           },

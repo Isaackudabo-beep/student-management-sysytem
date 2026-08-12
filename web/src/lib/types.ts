@@ -1,7 +1,8 @@
 // Purpose: Shared TypeScript types mirroring API responses.
-export type Role = "ADMIN" | "TEACHER" | "STUDENT";
+export type Role = "SUPER_ADMIN" | "ADMIN" | "TEACHER" | "STUDENT";
 export type Term = "FIRST" | "SECOND" | "THIRD";
 export type AcademicStatus = "ACTIVE" | "PROMOTED" | "REPEATING";
+export type SchoolStatus = "ACTIVE" | "SUSPENDED";
 
 export type AuthUser = {
   id: string;
@@ -9,8 +10,36 @@ export type AuthUser = {
   email: string;
   role: Role;
   mustChangePassword?: boolean;
+  schoolId?: string | null;
   studentId?: string | null;
   teacherId?: string | null;
+};
+
+export type PlatformSchool = {
+  id: string;
+  name: string;
+  code: string;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  status: SchoolStatus;
+  createdAt: string;
+  adminCount?: number;
+  _count?: {
+    students: number;
+    teachers: number;
+    classes: number;
+    subjects: number;
+    users?: number;
+    announcements?: number;
+  };
+  admins?: Array<{
+    id: string;
+    fullName: string;
+    email: string;
+    mustChangePassword: boolean;
+    createdAt: string;
+  }>;
 };
 
 export type SchoolClass = {

@@ -1,6 +1,7 @@
 /** Student scalars always present before academicStatus migration. */
 export const studentBaseSelect = {
     id: true,
+    schoolId: true,
     userId: true,
     admissionNumber: true,
     matricNumber: true,

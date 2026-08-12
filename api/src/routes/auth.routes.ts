@@ -51,6 +51,7 @@ router.post(
   async (req, res, next) => {
     try {
       const result = await authService.adminResetPassword(
+        req.user!.schoolId!,
         req.body.userId,
         req.body.temporaryPassword
       );

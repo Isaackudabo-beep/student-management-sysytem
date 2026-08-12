@@ -1,10 +1,14 @@
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
+import { assertSchoolMatch, requireSchoolId } from "../lib/schoolScope.js";
 import { enrollmentBaseSelect, enrollmentSelectWithTerm, isSchemaMismatch, studentBaseSelect, studentSelectWithStatus, withAcademicStatus, withTerm, } from "../lib/safeSelects.js";
-export async function createEnrollment(input) {
+export async function createEnrollment(input, actor) {
+    requireSchoolId(actor);
     const term = input.term ?? "FIRST";
     const student = assertFound(await prisma.student.findUnique({ where: { id: input.studentId } }), "Student not found");
+    assertSchoolMatch(actor, student.schoolId, "Student");
     const subject = assertFound(await prisma.subject.findUnique({ where: { id: input.subjectId } }), "Subject not found");
+    assertSchoolMatch(actor, subject.schoolId, "Subject");
     if (subject.level.toUpperCase() !== student.level.toUpperCase()) {
         throw new AppError(400, `Subject level ${subject.level} does not match student class level ${student.level}`);
     }
@@ -70,6 +74,7 @@ export async function createEnrollment(input) {
     }
 }
 export async function listEnrollments(params, actor) {
+    const schoolId = requireSchoolId(actor);
     let subjectFilter = {};
     if (actor.role === "TEACHER") {
         if (!actor.teacherId)
@@ -92,6 +97,7 @@ export async function listEnrollments(params, actor) {
     }
     const whereWithTerm = {
         AND: [
+            { student: { schoolId } },
             subjectFilter,
             params.studentId ? { studentId: params.studentId } : {},
             params.subjectId ? { subjectId: params.subjectId } : {},
@@ -102,6 +108,7 @@ export async function listEnrollments(params, actor) {
     };
     const whereLegacy = {
         AND: [
+            { student: { schoolId } },
             subjectFilter,
             params.studentId ? { studentId: params.studentId } : {},
             params.subjectId ? { subjectId: params.subjectId } : {},
@@ -155,11 +162,12 @@ export async function listEnrollments(params, actor) {
         return fetch(whereLegacy, enrollmentBaseSelect, studentBaseSelect);
     }
 }
-export async function deleteEnrollment(id) {
+export async function deleteEnrollment(id, actor) {
     const enrollment = assertFound(await prisma.enrollment.findUnique({
         where: { id },
-        include: { score: true },
+        include: { score: true, student: true },
     }), "Enrollment not found");
+    assertSchoolMatch(actor, enrollment.student.schoolId, "Enrollment");
     if (enrollment.score) {
         throw new AppError(400, "Cannot delete enrollment that has a score. Remove the score first.");
     }

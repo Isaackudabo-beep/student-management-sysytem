@@ -1,20 +1,27 @@
 import { AppError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
+import { requireSchoolId } from "../lib/schoolScope.js";
 import * as announcementService from "./announcement.service.js";
-export async function listActiveSessions() {
+export async function listActiveSessions(actor) {
+    const schoolId = requireSchoolId(actor);
+    const studentFilter = { student: { schoolId } };
+    const teacherFilter = { teacher: { schoolId } };
     try {
         const [enrollmentSessions, assignmentSessions, archives] = await Promise.all([
             prisma.enrollment.findMany({
+                where: studentFilter,
                 distinct: ["session", "term"],
                 select: { session: true, term: true },
                 orderBy: [{ session: "desc" }, { term: "asc" }],
             }),
             prisma.teacherSubject.findMany({
+                where: teacherFilter,
                 distinct: ["session"],
                 select: { session: true },
                 orderBy: { session: "desc" },
             }),
             prisma.resultArchive.findMany({
+                where: { student: { schoolId } },
                 distinct: ["session", "term"],
                 select: { session: true, term: true },
                 orderBy: [{ session: "desc" }, { term: "asc" }],
@@ -35,14 +42,16 @@ export async function listActiveSessions() {
             }
         }
         const details = await Promise.all([...keys.values()].map(async ({ session, term }) => {
-            const enrollmentWhere = term ? { session, term } : { session };
+            const enrollmentWhere = term
+                ? { session, term, student: { schoolId } }
+                : { session, student: { schoolId } };
             const [enrollments, scores, teacherAssignments, archived] = await Promise.all([
                 prisma.enrollment.count({ where: enrollmentWhere }),
                 prisma.score.count({ where: { enrollment: enrollmentWhere } }),
-                prisma.teacherSubject.count({ where: { session } }),
+                prisma.teacherSubject.count({ where: { session, teacher: { schoolId } } }),
                 term
-                    ? prisma.resultArchive.count({ where: { session, term } })
-                    : prisma.resultArchive.count({ where: { session } }),
+                    ? prisma.resultArchive.count({ where: { session, term, student: { schoolId } } })
+                    : prisma.resultArchive.count({ where: { session, student: { schoolId } } }),
             ]);
             return { session, term, enrollments, scores, teacherAssignments, archived };
         }));
@@ -56,11 +65,13 @@ export async function listActiveSessions() {
     catch {
         const [enrollmentSessions, assignmentSessions] = await Promise.all([
             prisma.enrollment.findMany({
+                where: studentFilter,
                 distinct: ["session"],
                 select: { session: true },
                 orderBy: { session: "desc" },
             }),
             prisma.teacherSubject.findMany({
+                where: teacherFilter,
                 distinct: ["session"],
                 select: { session: true },
                 orderBy: { session: "desc" },
@@ -74,9 +85,9 @@ export async function listActiveSessions() {
         ];
         return Promise.all(sessions.map(async (session) => {
             const [enrollments, scores, teacherAssignments] = await Promise.all([
-                prisma.enrollment.count({ where: { session } }),
-                prisma.score.count({ where: { enrollment: { session } } }),
-                prisma.teacherSubject.count({ where: { session } }),
+                prisma.enrollment.count({ where: { session, student: { schoolId } } }),
+                prisma.score.count({ where: { enrollment: { session, student: { schoolId } } } }),
+                prisma.teacherSubject.count({ where: { session, teacher: { schoolId } } }),
             ]);
             return {
                 session,
@@ -89,21 +100,16 @@ export async function listActiveSessions() {
         }));
     }
 }
-/**
- * Close a term for a session:
- * 1. Archive graded scores into ResultArchive
- * 2. Delete those scores (and optionally enrollments)
- * 3. NEVER delete TeacherSubject, teachers, students, subjects, or classes
- */
 export async function closeTerm(input) {
     const session = input.session.trim();
     const term = input.term;
+    const schoolId = input.schoolId;
     if (session.length < 4) {
         throw new AppError(400, "Session is required (e.g. 2025/2026)");
     }
     const clearEnrollments = input.clearEnrollments !== false;
     const enrollments = await prisma.enrollment.findMany({
-        where: { session, term },
+        where: { session, term, student: { schoolId } },
         include: {
             score: { include: { teacher: true } },
             subject: true,
@@ -113,7 +119,7 @@ export async function closeTerm(input) {
     const enrollmentIds = enrollments.map((e) => e.id);
     const graded = enrollments.filter((e) => e.score);
     const teacherAssignmentsBefore = await prisma.teacherSubject.count({
-        where: { session },
+        where: { session, teacher: { schoolId } },
     });
     const result = await prisma.$transaction(async (tx) => {
         if (graded.length > 0) {
@@ -143,10 +149,12 @@ export async function closeTerm(input) {
             })).count
             : 0;
         const enrollmentsDeleted = clearEnrollments
-            ? (await tx.enrollment.deleteMany({ where: { session, term } })).count
+            ? (await tx.enrollment.deleteMany({
+                where: { session, term, student: { schoolId } },
+            })).count
             : 0;
         const teacherAssignmentsAfter = await tx.teacherSubject.count({
-            where: { session },
+            where: { session, teacher: { schoolId } },
         });
         return {
             scoresArchived: graded.length,
@@ -165,6 +173,7 @@ export async function closeTerm(input) {
             body: `${result.scoresArchived} result(s) for ${session} (${term} term) have been archived. Current scores were cleared for the next term.`,
             audience: "ALL",
             createdById: input.actorId,
+            schoolId,
         });
     }
     return {

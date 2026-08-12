@@ -8,6 +8,7 @@ export async function promoteStudents(input) {
     }
     const session = input.session.trim();
     const students = await prisma.student.findMany({
+        where: { schoolId: input.schoolId },
         include: { schoolClass: true, user: { select: { id: true, fullName: true } } },
     });
     const promoted = [];
@@ -49,6 +50,7 @@ export async function promoteStudents(input) {
                     to: "Graduated (SS3)",
                 });
                 await announcementService.createSystemAnnouncement({
+                    schoolId: student.schoolId,
                     title: "Congratulations — you completed SS3",
                     body: `Your third-term average for ${session} was ${average}%. You have completed secondary school.`,
                     audience: "USER",
@@ -64,6 +66,7 @@ export async function promoteStudents(input) {
             }
             const nextClass = await prisma.schoolClass.findFirst({
                 where: {
+                    schoolId: input.schoolId,
                     level: { equals: nxt, mode: "insensitive" },
                     ...(student.schoolClass.arm
                         ? { arm: { equals: student.schoolClass.arm, mode: "insensitive" } }
@@ -94,6 +97,7 @@ export async function promoteStudents(input) {
                 to: nextClass.name,
             });
             await announcementService.createSystemAnnouncement({
+                schoolId: student.schoolId,
                 title: "You have been promoted",
                 body: `Your third-term average for ${session} was ${average}% (≥ ${PASS_AVERAGE}%). You move from ${student.schoolClass.name} to ${nextClass.name}.`,
                 audience: "USER",
@@ -113,6 +117,7 @@ export async function promoteStudents(input) {
                 average,
             });
             await announcementService.createSystemAnnouncement({
+                schoolId: student.schoolId,
                 title: "Class repeat notice",
                 body: `Your third-term average for ${session} was ${average}% (below ${PASS_AVERAGE}%). You will repeat ${student.schoolClass.name}. Your portal shows “Repeated”.`,
                 audience: "USER",

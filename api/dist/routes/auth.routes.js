@@ -34,7 +34,7 @@ router.post("/change-password", authenticate, validate(changePasswordSchema), as
 });
 router.post("/admin/reset-password", authenticate, authorize("ADMIN"), validate(adminResetPasswordSchema), async (req, res, next) => {
     try {
-        const result = await authService.adminResetPassword(req.body.userId, req.body.temporaryPassword);
+        const result = await authService.adminResetPassword(req.user.schoolId, req.body.userId, req.body.temporaryPassword);
         res.json({ success: true, data: result });
     }
     catch (error) {

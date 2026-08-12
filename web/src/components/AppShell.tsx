@@ -43,6 +43,10 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
       router.replace("/");
       return;
     }
+    if (user.role === "SUPER_ADMIN") {
+      router.replace("/admin");
+      return;
+    }
     if (user.mustChangePassword && pathname !== "/change-password") {
       router.replace("/change-password");
       return;

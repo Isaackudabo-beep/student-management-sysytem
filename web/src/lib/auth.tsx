@@ -30,6 +30,7 @@ function mapUser(data: AuthUser & { student?: { id: string }; teacher?: { id: st
     email: data.email,
     role: data.role,
     mustChangePassword: Boolean(data.mustChangePassword),
+    schoolId: data.schoolId ?? null,
     studentId: data.studentId ?? data.student?.id ?? null,
     teacherId: data.teacherId ?? data.teacher?.id ?? null,
   };
@@ -101,12 +102,14 @@ export function useAuth() {
 }
 
 export function dashboardPath(role: Role) {
+  if (role === "SUPER_ADMIN") return "/admin";
   if (role === "ADMIN") return "/dashboard/admin";
   if (role === "TEACHER") return "/dashboard/teacher";
   return "/dashboard/student";
 }
 
 export function loginPath(role: Role) {
+  if (role === "SUPER_ADMIN") return "/admin/login";
   if (role === "ADMIN") return "/login/admin";
   if (role === "TEACHER") return "/login/teacher";
   return "/login/student";

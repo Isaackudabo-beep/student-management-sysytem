@@ -9,7 +9,7 @@ const router = Router();
 router.use(authenticate);
 router.get("/", authorize("ADMIN"), validate(searchQuerySchema, "query"), async (req, res, next) => {
     try {
-        const result = await teacherService.listTeachers(req.query);
+        const result = await teacherService.listTeachers(req.query, req.user);
         res.json({ success: true, ...result });
     }
     catch (error) {
@@ -18,7 +18,7 @@ router.get("/", authorize("ADMIN"), validate(searchQuerySchema, "query"), async 
 });
 router.get("/unassigned-subjects", authorize("ADMIN"), validate(z.object({ session: z.string().min(4) }), "query"), async (req, res, next) => {
     try {
-        const data = await teacherService.listUnassignedSubjects(String(req.query.session));
+        const data = await teacherService.listUnassignedSubjects(String(req.query.session), req.user);
         res.json({ success: true, data });
     }
     catch (error) {
@@ -27,7 +27,7 @@ router.get("/unassigned-subjects", authorize("ADMIN"), validate(z.object({ sessi
 });
 router.post("/", authorize("ADMIN"), validate(createTeacherSchema), async (req, res, next) => {
     try {
-        const teacher = await teacherService.createTeacher(req.body);
+        const teacher = await teacherService.createTeacher(req.body, req.user);
         res.status(201).json({ success: true, data: teacher });
     }
     catch (error) {
@@ -36,7 +36,7 @@ router.post("/", authorize("ADMIN"), validate(createTeacherSchema), async (req, 
 });
 router.post("/assign-subject", authorize("ADMIN"), validate(assignTeacherSchema), async (req, res, next) => {
     try {
-        const assignment = await teacherService.assignTeacherToSubject(req.body);
+        const assignment = await teacherService.assignTeacherToSubject(req.body, req.user);
         res.status(201).json({ success: true, data: assignment });
     }
     catch (error) {
@@ -45,7 +45,7 @@ router.post("/assign-subject", authorize("ADMIN"), validate(assignTeacherSchema)
 });
 router.post("/assign-subjects", authorize("ADMIN"), validate(assignTeacherSubjectsSchema), async (req, res, next) => {
     try {
-        const data = await teacherService.assignTeacherSubjects(req.body);
+        const data = await teacherService.assignTeacherSubjects(req.body, req.user);
         res.status(201).json({ success: true, data });
     }
     catch (error) {
@@ -54,7 +54,7 @@ router.post("/assign-subjects", authorize("ADMIN"), validate(assignTeacherSubjec
 });
 router.delete("/assignments/:assignmentId", authorize("ADMIN"), async (req, res, next) => {
     try {
-        const data = await teacherService.removeTeacherSubject(req.params.assignmentId);
+        const data = await teacherService.removeTeacherSubject(req.params.assignmentId, req.user);
         res.json({ success: true, data });
     }
     catch (error) {
@@ -63,7 +63,7 @@ router.delete("/assignments/:assignmentId", authorize("ADMIN"), async (req, res,
 });
 router.get("/:id", authorize("ADMIN"), async (req, res, next) => {
     try {
-        const teacher = await teacherService.getTeacherById(req.params.id);
+        const teacher = await teacherService.getTeacherById(req.params.id, req.user);
         res.json({ success: true, data: teacher });
     }
     catch (error) {
@@ -72,7 +72,7 @@ router.get("/:id", authorize("ADMIN"), async (req, res, next) => {
 });
 router.patch("/:id", authorize("ADMIN"), validate(updateTeacherSchema), async (req, res, next) => {
     try {
-        const teacher = await teacherService.updateTeacher(req.params.id, req.body);
+        const teacher = await teacherService.updateTeacher(req.params.id, req.body, req.user);
         res.json({ success: true, data: teacher });
     }
     catch (error) {
@@ -81,7 +81,7 @@ router.patch("/:id", authorize("ADMIN"), validate(updateTeacherSchema), async (r
 });
 router.delete("/:id", authorize("ADMIN"), async (req, res, next) => {
     try {
-        const result = await teacherService.deleteTeacher(req.params.id);
+        const result = await teacherService.deleteTeacher(req.params.id, req.user);
         res.json({ success: true, data: result });
     }
     catch (error) {

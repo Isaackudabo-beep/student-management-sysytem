@@ -9,7 +9,7 @@ export const termSchema = z.enum(["FIRST", "SECOND", "THIRD"]);
 export const loginSchema = z.object({
     email: z.string().email(),
     password: z.string().min(6),
-    expectedRole: z.enum(["ADMIN", "TEACHER", "STUDENT"]),
+    expectedRole: z.enum(["SUPER_ADMIN", "ADMIN", "TEACHER", "STUDENT"]),
 });
 export const changePasswordSchema = z.object({
     currentPassword: z.string().min(6).optional(),

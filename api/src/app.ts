@@ -15,6 +15,7 @@ import dashboardRoutes from "./routes/dashboard.routes.js";
 import classesRoutes from "./routes/classes.routes.js";
 import announcementsRoutes from "./routes/announcements.routes.js";
 import termRoutes from "./routes/term.routes.js";
+import platformRoutes from "./routes/platform.routes.js";
 
 export function createApp() {
   const app = express();
@@ -43,6 +44,7 @@ export function createApp() {
   });
 
   app.use("/api/auth", authRoutes);
+  app.use("/api/platform", platformRoutes);
   app.use("/api/students", studentsRoutes);
   app.use("/api/teachers", teachersRoutes);
   app.use("/api/subjects", subjectsRoutes);

@@ -1,4 +1,4 @@
-// Purpose: Prisma schema — secondary school SMS domain model.
+// Purpose: Prisma schema — multi-school SMS domain model.
 generator client {
   provider      = "prisma-client-js"
   // native = local; debian = Render Linux free/starter images
@@ -12,6 +12,7 @@ datasource db {
 }
 
 enum Role {
+  SUPER_ADMIN
   ADMIN
   TEACHER
   STUDENT
@@ -44,12 +45,42 @@ enum AnnouncementAudience {
   USER
 }
 
+enum SchoolStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+/// Platform tenant — each school is an isolated workspace.
+model School {
+  id          String       @id @default(cuid())
+  name        String
+  code        String       @unique
+  address     String?
+  phone       String?
+  email       String?
+  status      SchoolStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  users       User[]
+  classes     SchoolClass[]
+  students    Student[]
+  teachers    Teacher[]
+  subjects    Subject[]
+  announcements Announcement[]
+
+  @@index([status])
+  @@index([name])
+}
+
 model User {
   id                 String              @id @default(cuid())
   fullName           String
   email              String              @unique
   passwordHash       String
   role               Role
+  /// Null only for SUPER_ADMIN (platform-level). Required for school roles.
+  schoolId           String?
+  school             School?             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   mustChangePassword Boolean             @default(false)
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
@@ -59,11 +90,16 @@ model User {
   announcements      Announcement[]      @relation("AnnouncementAuthor")
   announcementReads  AnnouncementRead[]
   targetedAnnouncements Announcement[]  @relation("AnnouncementTargetUser")
+
+  @@index([schoolId])
+  @@index([role])
 }
 
 model SchoolClass {
   id            String         @id @default(cuid())
-  name          String         @unique
+  schoolId      String
+  school        School         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  name          String
   level         String
   arm           String?
   createdAt     DateTime       @default(now())
@@ -71,18 +107,22 @@ model SchoolClass {
   students      Student[]
   announcements Announcement[]
 
+  @@unique([schoolId, name])
+  @@index([schoolId])
   @@index([level])
 }
 
 model Student {
   id               String         @id @default(cuid())
+  schoolId         String
+  school           School         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   userId           String         @unique
   user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  admissionNumber  String         @unique
-  matricNumber     String         @unique
+  admissionNumber  String
+  matricNumber     String
   firstName        String
   lastName         String
-  email            String         @unique
+  email            String
   phone            String
   gender           Gender
   dateOfBirth      DateTime
@@ -99,6 +139,10 @@ model Student {
   enrollments      Enrollment[]
   archivedResults  ResultArchive[]
 
+  @@unique([schoolId, admissionNumber])
+  @@unique([schoolId, matricNumber])
+  @@unique([schoolId, email])
+  @@index([schoolId])
   @@index([classId])
   @@index([level])
   @@index([academicStatus])
@@ -106,22 +150,29 @@ model Student {
 
 model Teacher {
   id         String           @id @default(cuid())
+  schoolId   String
+  school     School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   userId     String           @unique
   user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   firstName  String
   lastName   String
-  email      String           @unique
+  email      String
   phone      String?
   department String
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
   subjects   TeacherSubject[]
   scores     Score[]
+
+  @@unique([schoolId, email])
+  @@index([schoolId])
 }
 
 model Subject {
   id          String           @id @default(cuid())
-  code        String           @unique
+  schoolId    String
+  school      School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  code        String
   title       String
   unit        Int
   semester    Int
@@ -131,6 +182,8 @@ model Subject {
   teachers    TeacherSubject[]
   enrollments Enrollment[]
 
+  @@unique([schoolId, code])
+  @@index([schoolId])
   @@index([level])
 }
 
@@ -220,6 +273,8 @@ model PasswordResetToken {
 
 model Announcement {
   id            String               @id @default(cuid())
+  schoolId      String
+  school        School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   title         String
   body          String
   audience      AnnouncementAudience
@@ -235,6 +290,7 @@ model Announcement {
   updatedAt     DateTime             @updatedAt
   reads         AnnouncementRead[]
 
+  @@index([schoolId])
   @@index([audience])
   @@index([publishedAt])
   @@index([targetClassId])

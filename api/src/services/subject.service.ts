@@ -2,31 +2,52 @@
 import { Prisma } from "@prisma/client";
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
+import { assertSchoolMatch, requireSchoolId } from "../lib/schoolScope.js";
+import type { AuthUser } from "../middleware/auth.js";
 
-export async function createSubject(input: {
-  code: string;
-  title: string;
-  unit: number;
-  semester: number;
-  level: string;
-}) {
+export async function createSubject(
+  input: {
+    code: string;
+    title: string;
+    unit: number;
+    semester: number;
+    level: string;
+  },
+  actor: AuthUser
+) {
+  const schoolId = requireSchoolId(actor);
+  const code = input.code.toUpperCase();
+
+  const existing = await prisma.subject.findUnique({
+    where: { schoolId_code: { schoolId, code } },
+  });
+  if (existing) {
+    throw new AppError(409, `Subject code ${code} already exists`);
+  }
+
   return prisma.subject.create({
     data: {
+      schoolId,
       ...input,
-      code: input.code.toUpperCase(),
+      code,
       level: input.level.toUpperCase(),
     },
   });
 }
 
-export async function listSubjects(params: {
-  q?: string;
-  level?: string;
-  page: number;
-  limit: number;
-}) {
+export async function listSubjects(
+  params: {
+    q?: string;
+    level?: string;
+    page: number;
+    limit: number;
+  },
+  actor: AuthUser
+) {
+  const schoolId = requireSchoolId(actor);
   const where: Prisma.SubjectWhereInput = {
     AND: [
+      { schoolId },
       params.level ? { level: { equals: params.level, mode: "insensitive" } } : {},
       params.q
         ? {
@@ -59,8 +80,8 @@ export async function listSubjects(params: {
   };
 }
 
-export async function getSubjectById(id: string) {
-  return assertFound(
+export async function getSubjectById(id: string, actor: AuthUser) {
+  const subject = assertFound(
     await prisma.subject.findUnique({
       where: { id },
       include: {
@@ -70,6 +91,8 @@ export async function getSubjectById(id: string) {
     }),
     "Subject not found"
   );
+  assertSchoolMatch(actor, subject.schoolId, "Subject");
+  return subject;
 }
 
 export async function updateSubject(
@@ -80,9 +103,21 @@ export async function updateSubject(
     unit: number;
     semester: number;
     level: string;
-  }>
+  }>,
+  actor: AuthUser
 ) {
-  await assertFound(await prisma.subject.findUnique({ where: { id } }), "Subject not found");
+  const subject = assertFound(await prisma.subject.findUnique({ where: { id } }), "Subject not found");
+  assertSchoolMatch(actor, subject.schoolId, "Subject");
+
+  if (input.code) {
+    const code = input.code.toUpperCase();
+    const clash = await prisma.subject.findUnique({
+      where: { schoolId_code: { schoolId: subject.schoolId, code } },
+    });
+    if (clash && clash.id !== id) {
+      throw new AppError(409, `Subject code ${code} already exists`);
+    }
+  }
 
   return prisma.subject.update({
     where: { id },
@@ -94,7 +129,7 @@ export async function updateSubject(
   });
 }
 
-export async function deleteSubject(id: string) {
+export async function deleteSubject(id: string, actor: AuthUser) {
   const subject = assertFound(
     await prisma.subject.findUnique({
       where: { id },
@@ -105,6 +140,7 @@ export async function deleteSubject(id: string) {
     }),
     "Subject not found"
   );
+  assertSchoolMatch(actor, subject.schoolId, "Subject");
 
   const hasScores = subject.enrollments.some((e) => e.score);
   if (hasScores) {

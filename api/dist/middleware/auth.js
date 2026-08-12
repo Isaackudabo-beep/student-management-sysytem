@@ -18,10 +18,19 @@ export async function authenticate(req, _res, next) {
             include: {
                 student: { select: { id: true } },
                 teacher: { select: { id: true } },
+                school: { select: { id: true, status: true } },
             },
         });
         if (!user) {
             throw new AppError(401, "Invalid token");
+        }
+        if (user.role !== "SUPER_ADMIN") {
+            if (!user.schoolId || !user.school) {
+                throw new AppError(403, "Your account is not linked to a school");
+            }
+            if (user.school.status === "SUSPENDED") {
+                throw new AppError(403, "This school is suspended. Contact the platform administrator.");
+            }
         }
         req.user = {
             id: user.id,
@@ -29,6 +38,7 @@ export async function authenticate(req, _res, next) {
             role: user.role,
             fullName: user.fullName,
             mustChangePassword: user.mustChangePassword,
+            schoolId: user.schoolId,
             studentId: user.student?.id,
             teacherId: user.teacher?.id,
         };
@@ -43,7 +53,6 @@ export async function authenticate(req, _res, next) {
                 `POST /api/auth/change-password`,
             ];
             const allowed = candidates.some((c) => PASSWORD_CHANGE_ALLOWLIST.has(c));
-            // Fallback: path ends with /me or /change-password under /api/auth
             const isAuthAllowed = req.baseUrl === "/api/auth" &&
                 (req.path === "/me" || req.path === "/change-password");
             if (!allowed && !isAuthAllowed) {
@@ -64,7 +73,7 @@ export function authorize(...roles) {
             return next(new AppError(401, "Authentication required"));
         }
         if (!roles.includes(req.user.role)) {
-            return next(new AppError(403, `This action requires ${roles.join(" or ")} access (you are signed in as ${req.user.role}). Sign in through the Admin portal if you need to manage the school.`));
+            return next(new AppError(403, `This action requires ${roles.join(" or ")} access (you are signed in as ${req.user.role}).`));
         }
         next();
     };

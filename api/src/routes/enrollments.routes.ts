@@ -31,7 +31,7 @@ router.get("/", authorize("ADMIN", "TEACHER"), validate(listSchema, "query"), as
 
 router.post("/", authorize("ADMIN"), validate(createEnrollmentSchema), async (req, res, next) => {
   try {
-    const enrollment = await enrollmentService.createEnrollment(req.body);
+    const enrollment = await enrollmentService.createEnrollment(req.body, req.user!);
     res.status(201).json({ success: true, data: enrollment });
   } catch (error) {
     next(error);
@@ -40,7 +40,7 @@ router.post("/", authorize("ADMIN"), validate(createEnrollmentSchema), async (re
 
 router.delete("/:id", authorize("ADMIN"), async (req, res, next) => {
   try {
-    const result = await enrollmentService.deleteEnrollment(req.params.id);
+    const result = await enrollmentService.deleteEnrollment(req.params.id, req.user!);
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);

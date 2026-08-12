@@ -1,8 +1,10 @@
 // Purpose: Role-aware dashboard statistics + chart metrics for secondary school SMS.
 import { AppError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
+import { requireSchoolId } from "../lib/schoolScope.js";
 import * as announcementService from "./announcement.service.js";
 export async function getDashboardStats(actor) {
+    const schoolId = requireSchoolId(actor);
     let notifications = [];
     try {
         notifications = await announcementService.getInbox(actor);
@@ -13,14 +15,15 @@ export async function getDashboardStats(actor) {
     const unreadNotifications = notifications.filter((n) => !n.read).length;
     if (actor.role === "ADMIN") {
         const [students, teachers, subjects, classes, enrollments, scores] = await Promise.all([
-            prisma.student.count(),
-            prisma.teacher.count(),
-            prisma.subject.count(),
-            prisma.schoolClass.count(),
-            prisma.enrollment.count(),
-            prisma.score.count(),
+            prisma.student.count({ where: { schoolId } }),
+            prisma.teacher.count({ where: { schoolId } }),
+            prisma.subject.count({ where: { schoolId } }),
+            prisma.schoolClass.count({ where: { schoolId } }),
+            prisma.enrollment.count({ where: { student: { schoolId } } }),
+            prisma.score.count({ where: { enrollment: { student: { schoolId } } } }),
         ]);
         const allScores = await prisma.score.findMany({
+            where: { enrollment: { student: { schoolId } } },
             select: {
                 total: true,
                 grade: true,
@@ -55,6 +58,7 @@ export async function getDashboardStats(actor) {
         }))
             .sort((a, b) => a.className.localeCompare(b.className));
         const populationByClass = await prisma.schoolClass.findMany({
+            where: { schoolId },
             orderBy: [{ level: "asc" }, { name: "asc" }],
             select: {
                 name: true,
@@ -63,6 +67,7 @@ export async function getDashboardStats(actor) {
         });
         const [recentEnrollments, recentScores, recentAnnouncements] = await Promise.all([
             prisma.enrollment.findMany({
+                where: { student: { schoolId } },
                 take: 5,
                 orderBy: { createdAt: "desc" },
                 select: {
@@ -72,6 +77,7 @@ export async function getDashboardStats(actor) {
                 },
             }),
             prisma.score.findMany({
+                where: { enrollment: { student: { schoolId } } },
                 take: 5,
                 orderBy: { updatedAt: "desc" },
                 select: {
@@ -86,6 +92,7 @@ export async function getDashboardStats(actor) {
                 },
             }),
             prisma.announcement.findMany({
+                where: { schoolId },
                 take: 5,
                 orderBy: { publishedAt: "desc" },
                 select: { title: true, publishedAt: true },
@@ -93,6 +100,7 @@ export async function getDashboardStats(actor) {
         ]);
         const gradeGroups = await prisma.score.groupBy({
             by: ["grade"],
+            where: { enrollment: { student: { schoolId } } },
             _count: { grade: true },
         });
         return {

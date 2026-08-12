@@ -10,6 +10,7 @@ function publicUser(user) {
         email: user.email,
         role: user.role,
         mustChangePassword: user.mustChangePassword,
+        schoolId: user.schoolId ?? null,
         studentId: user.student?.id ?? null,
         teacherId: user.teacher?.id ?? null,
     };
@@ -17,10 +18,10 @@ function publicUser(user) {
 export async function login(email, password, expectedRole) {
     const user = await prisma.user.findUnique({
         where: { email: email.toLowerCase() },
-        // Only load relation ids — avoids SELECT of new Student columns if migrate lags.
         include: {
             student: { select: { id: true } },
             teacher: { select: { id: true } },
+            school: { select: { id: true, status: true, name: true } },
         },
     });
     if (!user) {
@@ -37,12 +38,24 @@ export async function login(email, password, expectedRole) {
         throw new AppError(401, "Invalid email or password");
     }
     if (user.role !== expectedRole) {
-        throw new AppError(403, `This portal is for ${expectedRole.toLowerCase()}s only`);
+        throw new AppError(403, `This portal is for ${expectedRole.toLowerCase().replace("_", " ")}s only`);
+    }
+    if (user.role === "SUPER_ADMIN") {
+        // Platform admins are not tied to a school workspace.
+    }
+    else {
+        if (!user.schoolId || !user.school) {
+            throw new AppError(403, "Your account is not linked to a school");
+        }
+        if (user.school.status === "SUSPENDED") {
+            throw new AppError(403, "This school is suspended. Contact the platform administrator.");
+        }
     }
     const token = signToken({
         sub: user.id,
         role: user.role,
         email: user.email,
+        schoolId: user.schoolId,
     });
     return {
         token,
@@ -55,6 +68,7 @@ export async function getMe(userId) {
         include: {
             student: { select: { id: true } },
             teacher: { select: { id: true } },
+            school: { select: { id: true, name: true, status: true, code: true } },
         },
     });
     if (!user) {
@@ -64,6 +78,7 @@ export async function getMe(userId) {
         ...publicUser(user),
         student: user.student,
         teacher: user.teacher,
+        school: user.school,
     };
 }
 export async function changePassword(userId, input) {
@@ -90,12 +105,15 @@ export async function changePassword(userId, input) {
     });
     return { message: "Password updated" };
 }
-export async function adminResetPassword(userId, temporaryPassword) {
+export async function adminResetPassword(actorSchoolId, userId, temporaryPassword) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user)
         throw new AppError(404, "User not found");
-    if (user.role === "ADMIN") {
+    if (user.role === "ADMIN" || user.role === "SUPER_ADMIN") {
         throw new AppError(400, "Admin passwords cannot be reset through this endpoint");
+    }
+    if (user.schoolId !== actorSchoolId) {
+        throw new AppError(404, "User not found");
     }
     const passwordHash = await bcrypt.hash(temporaryPassword, 12);
     await prisma.user.update({
@@ -109,7 +127,6 @@ export async function adminResetPassword(userId, temporaryPassword) {
     };
 }
 export async function forgotPassword(email) {
-    // Stub for future SMTP/Resend integration — do not reveal whether email exists.
     await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
     return {
         message: "If an account exists for that email, a reset link will be sent when email delivery is configured. Ask an administrator to reset your password for now.",

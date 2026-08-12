@@ -2,6 +2,7 @@
 import type { AnnouncementAudience, Prisma, Role } from "@prisma/client";
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
+import { assertSchoolMatch, requireSchoolId } from "../lib/schoolScope.js";
 import type { AuthUser } from "../middleware/auth.js";
 
 function baseAudienceForRole(role: Role): AnnouncementAudience[] {
@@ -21,6 +22,7 @@ export async function createAnnouncement(
   },
   actor: AuthUser
 ) {
+  const schoolId = requireSchoolId(actor);
   if (input.audience === "CLASS" && !input.targetClassId) {
     throw new AppError(400, "targetClassId is required when audience is CLASS");
   }
@@ -28,28 +30,36 @@ export async function createAnnouncement(
     throw new AppError(400, "targetUserId is required when audience is USER");
   }
   if (input.targetClassId) {
-    await assertFound(
+    const cls = assertFound(
       await prisma.schoolClass.findUnique({ where: { id: input.targetClassId } }),
       "Class not found"
     );
+    assertSchoolMatch(actor, cls.schoolId, "Class");
   }
   if (input.targetUserId) {
-    await assertFound(await prisma.user.findUnique({ where: { id: input.targetUserId } }), "User not found");
+    const target = assertFound(
+      await prisma.user.findUnique({ where: { id: input.targetUserId } }),
+      "User not found"
+    );
+    assertSchoolMatch(actor, target.schoolId, "User");
   }
+
+  const expiresAt =
+    input.expiresAt && !Number.isNaN(Date.parse(input.expiresAt))
+      ? new Date(input.expiresAt)
+      : null;
 
   try {
     return await prisma.announcement.create({
       data: {
+        schoolId,
         title: input.title,
         body: input.body,
         audience: input.audience,
         createdById: actor.id,
         targetClassId: input.targetClassId ?? null,
         targetUserId: input.targetUserId ?? null,
-        expiresAt:
-          input.expiresAt && !Number.isNaN(Date.parse(input.expiresAt))
-            ? new Date(input.expiresAt)
-            : null,
+        expiresAt,
       },
     });
   } catch {
@@ -58,14 +68,12 @@ export async function createAnnouncement(
     }
     return prisma.announcement.create({
       data: {
+        schoolId,
         title: input.title,
         body: input.body,
         audience: input.audience,
         createdById: actor.id,
-        expiresAt:
-          input.expiresAt && !Number.isNaN(Date.parse(input.expiresAt))
-            ? new Date(input.expiresAt)
-            : null,
+        expiresAt,
       },
     });
   }
@@ -79,10 +87,25 @@ export async function createSystemAnnouncement(input: {
   createdById: string;
   targetClassId?: string | null;
   targetUserId?: string | null;
+  schoolId?: string;
 }) {
+  let schoolId = input.schoolId;
+  if (!schoolId) {
+    const author = await prisma.user.findUnique({
+      where: { id: input.createdById },
+      select: { schoolId: true },
+    });
+    schoolId = author?.schoolId ?? undefined;
+  }
+  if (!schoolId) {
+    console.warn("createSystemAnnouncement skipped: no schoolId");
+    return null;
+  }
+
   try {
     return await prisma.announcement.create({
       data: {
+        schoolId,
         title: input.title,
         body: input.body,
         audience: input.audience,
@@ -94,6 +117,7 @@ export async function createSystemAnnouncement(input: {
   } catch {
     return prisma.announcement.create({
       data: {
+        schoolId,
         title: input.title,
         body: input.body,
         audience:
@@ -104,10 +128,15 @@ export async function createSystemAnnouncement(input: {
   }
 }
 
-export async function listAnnouncementsAdmin(params: { page: number; limit: number }) {
+export async function listAnnouncementsAdmin(
+  params: { page: number; limit: number },
+  actor: AuthUser
+) {
+  const schoolId = requireSchoolId(actor);
   const [total, data] = await Promise.all([
-    prisma.announcement.count(),
+    prisma.announcement.count({ where: { schoolId } }),
     prisma.announcement.findMany({
+      where: { schoolId },
       skip: (params.page - 1) * params.limit,
       take: params.limit,
       orderBy: { publishedAt: "desc" },
@@ -131,14 +160,17 @@ export async function listAnnouncementsAdmin(params: { page: number; limit: numb
 }
 
 async function visibleWhereLegacy(actor: AuthUser): Promise<Prisma.AnnouncementWhereInput> {
+  const schoolId = requireSchoolId(actor);
   const now = new Date();
   return {
+    schoolId,
     audience: { in: baseAudienceForRole(actor.role) },
     OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
   };
 }
 
 async function visibleWhereTargeted(actor: AuthUser): Promise<Prisma.AnnouncementWhereInput> {
+  const schoolId = requireSchoolId(actor);
   const now = new Date();
   const notExpired = { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] };
 
@@ -161,7 +193,7 @@ async function visibleWhereTargeted(actor: AuthUser): Promise<Prisma.Announcemen
     or.push({ audience: "CLASS" }, { audience: "USER" });
   }
 
-  return { AND: [notExpired, { OR: or }] };
+  return { AND: [{ schoolId }, notExpired, { OR: or }] };
 }
 
 export async function getInbox(actor: AuthUser) {
@@ -239,13 +271,15 @@ export async function getUnreadCount(actor: AuthUser) {
 }
 
 export async function markRead(announcementId: string, actor: AuthUser) {
-  await assertFound(
+  const schoolId = requireSchoolId(actor);
+  const row = assertFound(
     await prisma.announcement.findUnique({
       where: { id: announcementId },
-      select: { id: true },
+      select: { id: true, schoolId: true },
     }),
     "Announcement not found"
   );
+  assertSchoolMatch(actor, row.schoolId, "Announcement");
 
   await prisma.announcementRead.upsert({
     where: {
@@ -258,11 +292,12 @@ export async function markRead(announcementId: string, actor: AuthUser) {
   return { message: "Marked as read" };
 }
 
-export async function deleteAnnouncement(id: string) {
-  await assertFound(
-    await prisma.announcement.findUnique({ where: { id }, select: { id: true } }),
+export async function deleteAnnouncement(id: string, actor: AuthUser) {
+  const row = assertFound(
+    await prisma.announcement.findUnique({ where: { id }, select: { id: true, schoolId: true } }),
     "Announcement not found"
   );
+  assertSchoolMatch(actor, row.schoolId, "Announcement");
   await prisma.announcement.delete({ where: { id } });
   return { message: "Announcement deleted" };
 }
