@@ -1,4 +1,4 @@
-// Purpose: Render start — build if needed, ensure schema, mark migrations applied, boot API.
+// Purpose: Render start — ensure real schema (incl. multi-school), migrate, seed, boot.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -12,6 +12,7 @@ const entry = path.join(apiRoot, "dist", "index.js");
 const buildScript = path.join(apiRoot, "scripts", "build.mjs");
 const ensureSchemaScript = path.join(apiRoot, "scripts", "ensure-schema.mjs");
 const ensureAdminScript = path.join(apiRoot, "scripts", "ensure-admin.mjs");
+const ensureSuperAdminScript = path.join(apiRoot, "scripts", "ensure-super-admin.mjs");
 const prismaBin = path.join(
   apiRoot,
   "node_modules",
@@ -20,7 +21,8 @@ const prismaBin = path.join(
 );
 const prismaCliJs = path.join(apiRoot, "node_modules", "prisma", "build", "index.js");
 
-const MIGRATIONS_TO_MARK = [
+// Only mark migrations that ensure-schema has already applied idempotently.
+const MIGRATIONS_TO_MARK_AFTER_ENSURE = [
   "20260806140000_terms_archive_notifications",
   "20260807180000_ensure_schema_idempotent",
   "20260811120000_multi_school_tenancy",
@@ -78,24 +80,32 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-console.log("Ensuring schema via DIRECT_URL (idempotent DDL)...");
+if (!process.env.DIRECT_URL) {
+  console.warn(
+    "WARNING: DIRECT_URL is not set. Neon pooled DATABASE_URL may fail DDL. Set DIRECT_URL to the direct (non-pooler) connection string."
+  );
+}
+
+// 1) Apply real DDL and VERIFY School/schoolId exist — fail boot if not.
+console.log("Ensuring schema via DIRECT_URL (legacy + multi-school)...");
 run(process.execPath, [ensureSchemaScript], { allowFail: false, env: prismaEnv() });
+
+// 2) Record migrations as applied only AFTER ensure-schema verified the columns.
+//    This repairs DBs where migrate was previously marked applied without DDL.
+for (const name of MIGRATIONS_TO_MARK_AFTER_ENSURE) {
+  runPrisma(["migrate", "resolve", "--applied", name], { allowFail: true });
+}
 
 console.log("Applying prisma migrate deploy...");
 runPrisma(["migrate", "deploy"], { allowFail: true });
 
-for (const name of MIGRATIONS_TO_MARK) {
-  // If migrate deploy failed earlier, mark these as applied after ensure-schema succeeded.
-  runPrisma(["migrate", "resolve", "--applied", name], { allowFail: true });
-}
-
-runPrisma(["migrate", "deploy"], { allowFail: true });
+// Re-verify after migrate in case anything lagged.
+run(process.execPath, [ensureSchemaScript], { allowFail: false, env: prismaEnv() });
 
 console.log("Ensuring admin@sms.local login...");
 run(process.execPath, [ensureAdminScript], { env: prismaEnv() });
 
-const ensureSuperAdminScript = path.join(apiRoot, "scripts", "ensure-super-admin.mjs");
-console.log("Ensuring superadmin@sms.local login...");
+console.log("Ensuring superadmin@sms.local login (seed only — no public signup)...");
 run(process.execPath, [ensureSuperAdminScript], { env: prismaEnv() });
 
 console.log("Starting API:", entry);

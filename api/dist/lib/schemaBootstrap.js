@@ -40,6 +40,37 @@ const STATEMENTS = [
     `CREATE INDEX IF NOT EXISTS "Announcement_targetUserId_idx" ON "Announcement"("targetUserId")`,
     `DO $$ BEGIN ALTER TABLE "Announcement" ADD CONSTRAINT "Announcement_targetClassId_fkey" FOREIGN KEY ("targetClassId") REFERENCES "SchoolClass"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE "Announcement" ADD CONSTRAINT "Announcement_targetUserId_fkey" FOREIGN KEY ("targetUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    // Multi-school tenancy (must exist or queries return P2022)
+    `DO $$ BEGIN CREATE TYPE "SchoolStatus" AS ENUM ('ACTIVE', 'SUSPENDED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'SUPER_ADMIN'; EXCEPTION WHEN duplicate_object THEN NULL; WHEN others THEN BEGIN ALTER TYPE "Role" ADD VALUE 'SUPER_ADMIN'; EXCEPTION WHEN duplicate_object THEN NULL; END; END $$`,
+    `CREATE TABLE IF NOT EXISTS "School" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "address" TEXT,
+    "phone" TEXT,
+    "email" TEXT,
+    "status" "SchoolStatus" NOT NULL DEFAULT 'ACTIVE',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "School_pkey" PRIMARY KEY ("id")
+  )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "School_code_key" ON "School"("code")`,
+    `INSERT INTO "School" ("id", "name", "code", "address", "status", "createdAt", "updatedAt")
+   SELECT 'school_default_legacy', 'Default School', 'DEFAULT', 'Migrated existing workspace', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+   WHERE NOT EXISTS (SELECT 1 FROM "School" WHERE "code" = 'DEFAULT')`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "schoolId" TEXT`,
+    `ALTER TABLE "SchoolClass" ADD COLUMN IF NOT EXISTS "schoolId" TEXT`,
+    `ALTER TABLE "Student" ADD COLUMN IF NOT EXISTS "schoolId" TEXT`,
+    `ALTER TABLE "Teacher" ADD COLUMN IF NOT EXISTS "schoolId" TEXT`,
+    `ALTER TABLE "Subject" ADD COLUMN IF NOT EXISTS "schoolId" TEXT`,
+    `ALTER TABLE "Announcement" ADD COLUMN IF NOT EXISTS "schoolId" TEXT`,
+    `UPDATE "User" SET "schoolId" = (SELECT "id" FROM "School" WHERE "code" = 'DEFAULT' LIMIT 1) WHERE "schoolId" IS NULL AND "role"::text <> 'SUPER_ADMIN'`,
+    `UPDATE "SchoolClass" SET "schoolId" = (SELECT "id" FROM "School" WHERE "code" = 'DEFAULT' LIMIT 1) WHERE "schoolId" IS NULL`,
+    `UPDATE "Student" SET "schoolId" = (SELECT "id" FROM "School" WHERE "code" = 'DEFAULT' LIMIT 1) WHERE "schoolId" IS NULL`,
+    `UPDATE "Teacher" SET "schoolId" = (SELECT "id" FROM "School" WHERE "code" = 'DEFAULT' LIMIT 1) WHERE "schoolId" IS NULL`,
+    `UPDATE "Subject" SET "schoolId" = (SELECT "id" FROM "School" WHERE "code" = 'DEFAULT' LIMIT 1) WHERE "schoolId" IS NULL`,
+    `UPDATE "Announcement" SET "schoolId" = (SELECT "id" FROM "School" WHERE "code" = 'DEFAULT' LIMIT 1) WHERE "schoolId" IS NULL`,
 ];
 let bootstrapped = false;
 export async function bootstrapSchema() {

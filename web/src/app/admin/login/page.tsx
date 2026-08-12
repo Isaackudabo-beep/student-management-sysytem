@@ -1,31 +1,43 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import Link from "next/link";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, ErrorText, Input, Label } from "@/components/ui";
 import { formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 export default function SuperAdminLoginPage() {
-  const { login, user, loading } = useAuth();
+  const { login, user, loading, logout } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState("superadmin@sms.local");
-  const [password, setPassword] = useState("Password123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  if (!loading && user?.role === "SUPER_ADMIN") {
-    router.replace("/admin");
-  }
+  useEffect(() => {
+    if (loading) return;
+    if (user?.role === "SUPER_ADMIN") {
+      router.replace("/admin/dashboard");
+      return;
+    }
+    // Wrong role holding a school session must not stay on this page as if authorized.
+    if (user && user.role !== "SUPER_ADMIN") {
+      logout();
+    }
+  }, [loading, user, router, logout]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
-      await login(email, password, "SUPER_ADMIN");
-      router.replace("/admin");
+      const signedIn = await login(email.trim(), password, "SUPER_ADMIN");
+      if (signedIn.role !== "SUPER_ADMIN") {
+        logout();
+        setError("Unauthorized — Super Admin access only");
+        return;
+      }
+      router.replace("/admin/dashboard");
     } catch (err) {
       setError(formatApiError(err, "Login failed"));
     } finally {
@@ -38,12 +50,12 @@ export default function SuperAdminLoginPage() {
       <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#122a35] p-6 shadow-[var(--shadow)]">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-accent">Platform</p>
         <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl font-semibold">
-          Super Admin login
+          Super Admin
         </h1>
         <p className="mt-2 text-sm text-white/60">
-          Manage schools across the platform. School staff use the normal portals.
+          Platform operators only. There is no public registration for this portal.
         </p>
-        <form onSubmit={onSubmit} className="mt-6 space-y-3">
+        <form onSubmit={onSubmit} className="mt-6 space-y-3" autoComplete="on">
           <div>
             <Label>Email</Label>
             <Input
@@ -51,6 +63,8 @@ export default function SuperAdminLoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoComplete="username"
+              placeholder="Enter your email"
               className="bg-white text-ink"
             />
           </div>
@@ -61,6 +75,8 @@ export default function SuperAdminLoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete="current-password"
+              placeholder="Enter your password"
               className="bg-white text-ink"
             />
           </div>
@@ -69,9 +85,6 @@ export default function SuperAdminLoginPage() {
           </Button>
           <ErrorText>{error}</ErrorText>
         </form>
-        <Link href="/" className="mt-4 inline-block text-sm text-white/60 hover:text-white">
-          ← Back to school portals
-        </Link>
       </div>
     </main>
   );

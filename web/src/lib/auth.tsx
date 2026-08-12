@@ -102,7 +102,7 @@ export function useAuth() {
 }
 
 export function dashboardPath(role: Role) {
-  if (role === "SUPER_ADMIN") return "/admin";
+  if (role === "SUPER_ADMIN") return "/admin/dashboard";
   if (role === "ADMIN") return "/dashboard/admin";
   if (role === "TEACHER") return "/dashboard/teacher";
   return "/dashboard/student";

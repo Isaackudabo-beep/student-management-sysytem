@@ -14,9 +14,25 @@ Then **Manual Deploy → Clear build cache & deploy**.
 
 ## Environment variables
 
-`DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `CORS_ORIGIN` (Vercel URL), `NODE_ENV=production`
+| Variable | Required | Notes |
+|----------|----------|--------|
+| `DATABASE_URL` | Yes | Neon **pooled** connection string |
+| `DIRECT_URL` | **Yes (critical)** | Neon **direct / non-pooled** host — used for `ensure-schema` DDL and `prisma migrate deploy`. Without this, multi-school columns (`School`, `schoolId`) may never apply and school APIs return schema errors. |
+| `JWT_SECRET` | Yes | |
+| `CORS_ORIGIN` | Yes | Exact Vercel URL(s), comma-separated OK |
+| `NODE_ENV` | Yes | `production` |
 
 Do not set `PORT`.
+
+## Start behaviour
+
+`npm run start:render` will:
+
+1. Run **ensure-schema** (idempotent DDL for legacy + multi-school) and **fail boot** if `School` / `schoolId` are missing  
+2. Mark known migrations applied only after that verify succeeds  
+3. Run `prisma migrate deploy`  
+4. Seed `admin@sms.local` and `superadmin@sms.local` (platform seed only — no public Super Admin signup)  
+5. Start the API  
 
 ## Verify
 

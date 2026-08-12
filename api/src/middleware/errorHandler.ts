@@ -60,7 +60,7 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
       return res.status(503).json({
         success: false,
         message:
-          "Database schema is updating. Wait about a minute and refresh — if this persists, set DIRECT_URL on the API host and redeploy.",
+          "Required database columns are missing (multi-school schema). Redeploy the API with DIRECT_URL set to Neon’s direct (non-pooled) connection so ensure-schema can apply School/schoolId.",
         code: err.code,
       });
     }

@@ -7,8 +7,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { useAuth } from "@/lib/auth";
 
-const NAV = [
-  { href: "/admin", label: "Overview" },
+const NAV: Array<{ href: string; label: string; exact?: boolean }> = [
+  { href: "/admin/dashboard", label: "Dashboard", exact: true },
   { href: "/admin/schools", label: "Schools" },
 ];
 
@@ -51,20 +51,25 @@ export function SuperAdminShell({ children, title }: { children: ReactNode; titl
           </h2>
           <p className="mt-2 text-sm text-white/60">{user.fullName}</p>
           <nav className="mt-8 space-y-1">
-            {NAV.map((link) => (
+            {NAV.map((link) => {
+              const active = link.exact
+                ? pathname === link.href
+                : pathname === link.href || pathname.startsWith(link.href + "/");
+              return (
               <Link
                 key={link.href}
                 href={link.href}
                 className={clsx(
                   "block rounded-xl px-3 py-2 text-sm font-semibold transition",
-                  pathname === link.href
+                  active
                     ? "bg-[#7ec8c8] text-[#0b1c24]"
                     : "text-white/80 hover:bg-white/5"
                 )}
               >
                 {link.label}
               </Link>
-            ))}
+              );
+            })}
           </nav>
           <button
             type="button"
