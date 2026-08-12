@@ -37,21 +37,35 @@ export function RoleLoginForm({ role }: { role: Role }) {
   const meta = COPY[role];
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [schoolCode, setSchoolCode] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const needsSchoolCode = role !== "SUPER_ADMIN";
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
     setSubmitting(true);
     try {
-      const signedIn = await login(email, password, role);
+      const signedIn = await login(
+        email,
+        password,
+        role,
+        needsSchoolCode ? schoolCode || undefined : undefined
+      );
       router.replace(
         signedIn.mustChangePassword ? "/change-password" : dashboardPath(signedIn.role)
       );
     } catch (err) {
       if (err instanceof ApiRequestError) {
-        setError(err.message);
+        const needsCode =
+          err.code === "SCHOOL_CODE_REQUIRED" ||
+          /school code/i.test(err.message);
+        setError(
+          needsCode
+            ? `${err.message} Use the school code from your administrator.`
+            : err.message
+        );
       } else if (err instanceof TypeError) {
         setError(
           `Cannot reach the API at ${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}. Check that the backend is online.`
@@ -103,6 +117,7 @@ export function RoleLoginForm({ role }: { role: Role }) {
               logout();
               setEmail("");
               setPassword("");
+              setSchoolCode("");
             }}
           >
             Sign out and use a different account
@@ -125,11 +140,21 @@ export function RoleLoginForm({ role }: { role: Role }) {
           {meta.title}
         </h1>
         <p className="mt-2 text-muted">{meta.blurb}</p>
-        <p className="mt-1 text-sm text-muted">
-          After sign-in, this workspace shows your school’s name.
-        </p>
 
-        <label className="mt-6 block text-sm font-medium">
+        {needsSchoolCode ? (
+          <label className="mt-6 block text-sm font-medium">
+            School code
+            <input
+              className="mt-2 w-full rounded-xl border border-line bg-white px-4 py-3 outline-none ring-brand focus:ring-2"
+              value={schoolCode}
+              onChange={(e) => setSchoolCode(e.target.value)}
+              placeholder="e.g. GREENFIELD (required if email is shared)"
+              autoComplete="organization"
+            />
+          </label>
+        ) : null}
+
+        <label className={`block text-sm font-medium ${needsSchoolCode ? "mt-4" : "mt-6"}`}>
           Email
           <input
             className="mt-2 w-full rounded-xl border border-line bg-white px-4 py-3 outline-none ring-brand focus:ring-2"
@@ -167,6 +192,7 @@ export function RoleLoginForm({ role }: { role: Role }) {
 
         <p className="mt-4 text-center text-sm text-muted">
           Demo: {meta.demo} / Password123!
+          {role === "ADMIN" ? " · school code DEFAULT" : null}
         </p>
 
         <p className="mt-2 text-center text-sm text-muted">

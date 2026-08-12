@@ -8,6 +8,7 @@ import {
   forgotPasswordSchema,
   loginSchema,
 } from "../validators/schemas.js";
+import { requireSchoolId } from "../lib/schoolScope.js";
 import * as authService from "../services/auth.service.js";
 
 const router = Router();
@@ -17,7 +18,8 @@ router.post("/login", validate(loginSchema), async (req, res, next) => {
     const result = await authService.login(
       req.body.email,
       req.body.password,
-      req.body.expectedRole
+      req.body.expectedRole,
+      req.body.schoolCode
     );
     res.json({ success: true, data: result });
   } catch (error) {
@@ -51,7 +53,7 @@ router.post(
   async (req, res, next) => {
     try {
       const result = await authService.adminResetPassword(
-        req.user!.schoolId!,
+        requireSchoolId(req.user!),
         req.body.userId,
         req.body.temporaryPassword
       );

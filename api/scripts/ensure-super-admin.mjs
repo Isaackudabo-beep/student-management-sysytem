@@ -46,7 +46,7 @@ async function main() {
   const passwordHash = await bcrypt.hash(password, 12);
 
   try {
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await prisma.user.findFirst({ where: { email, schoolId: null, role: "SUPER_ADMIN" } });
     if (!existing) {
       await prisma.user.create({
         data: {

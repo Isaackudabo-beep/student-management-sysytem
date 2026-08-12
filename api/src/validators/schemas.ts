@@ -13,6 +13,8 @@ export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   expectedRole: z.enum(["SUPER_ADMIN", "ADMIN", "TEACHER", "STUDENT"]),
+  /** Required when the same email exists in more than one school for this role. */
+  schoolCode: z.string().min(1).max(40).optional(),
 });
 
 export const changePasswordSchema = z.object({

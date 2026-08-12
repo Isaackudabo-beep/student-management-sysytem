@@ -19,3 +19,8 @@ export function assertSchoolMatch(actor: AuthUser, resourceSchoolId: string | nu
     throw new AppError(404, `${label} not found`);
   }
 }
+
+/** Prefer school-scoped id lookups so cross-tenant ids never resolve. */
+export function schoolIdFilter(actor: AuthUser) {
+  return { schoolId: requireSchoolId(actor) };
+}

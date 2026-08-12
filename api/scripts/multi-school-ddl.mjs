@@ -76,6 +76,12 @@ export const MULTI_SCHOOL_STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "Student_schoolId_matricNumber_key" ON "Student"("schoolId", "matricNumber")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "Student_schoolId_email_key" ON "Student"("schoolId", "email")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "Teacher_schoolId_email_key" ON "Teacher"("schoolId", "email")`,
+  // Login emails are tenant-scoped: same address may exist in school A and school B.
+  `ALTER TABLE "User" DROP CONSTRAINT IF EXISTS "User_email_key"`,
+  `DROP INDEX IF EXISTS "User_email_key"`,
+  `CREATE INDEX IF NOT EXISTS "User_email_idx" ON "User"("email")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "User_schoolId_email_key" ON "User"("schoolId", "email") WHERE "schoolId" IS NOT NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "User_platform_email_key" ON "User"("email") WHERE "schoolId" IS NULL`,
   `CREATE INDEX IF NOT EXISTS "User_schoolId_idx" ON "User"("schoolId")`,
   `CREATE INDEX IF NOT EXISTS "User_role_idx" ON "User"("role")`,
   `CREATE INDEX IF NOT EXISTS "SchoolClass_schoolId_idx" ON "SchoolClass"("schoolId")`,

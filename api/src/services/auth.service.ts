@@ -30,18 +30,52 @@ function publicUser(user: {
   };
 }
 
-export async function login(email: string, password: string, expectedRole: Role) {
-  const user = await prisma.user.findUnique({
-    where: { email: email.toLowerCase() },
+export async function login(
+  email: string,
+  password: string,
+  expectedRole: Role,
+  schoolCode?: string
+) {
+  const normalizedEmail = email.toLowerCase().trim();
+  const code = schoolCode?.trim().toUpperCase();
+
+  const candidates = await prisma.user.findMany({
+    where: {
+      email: normalizedEmail,
+      role: expectedRole,
+      ...(expectedRole === "SUPER_ADMIN"
+        ? { schoolId: null }
+        : code
+          ? { school: { code: { equals: code, mode: "insensitive" } } }
+          : {}),
+    },
     include: {
       student: { select: { id: true } },
       teacher: { select: { id: true } },
       school: { select: { id: true, status: true, name: true, code: true } },
     },
+    take: 10,
   });
 
-  if (!user) {
+  if (candidates.length === 0) {
     throw new AppError(401, "Invalid email or password");
+  }
+
+  if (expectedRole !== "SUPER_ADMIN" && !code && candidates.length > 1) {
+    throw new AppError(
+      400,
+      "This email exists in more than one school. Enter your school code to continue.",
+      { requiresSchoolCode: true, schools: candidates.map((c) => c.school?.code).filter(Boolean) },
+      "SCHOOL_CODE_REQUIRED"
+    );
+  }
+
+  // Prefer exact school match when code provided; otherwise the sole candidate.
+  let user = candidates[0]!;
+  if (code && candidates.length > 1) {
+    const matched = candidates.find((c) => c.school?.code?.toUpperCase() === code);
+    if (!matched) throw new AppError(401, "Invalid email or password");
+    user = matched;
   }
 
   let valid = false;
@@ -52,10 +86,6 @@ export async function login(email: string, password: string, expectedRole: Role)
   }
   if (!valid) {
     throw new AppError(401, "Invalid email or password");
-  }
-
-  if (user.role !== expectedRole) {
-    throw new AppError(403, `This portal is for ${expectedRole.toLowerCase().replace("_", " ")}s only`);
   }
 
   if (user.role === "SUPER_ADMIN") {
@@ -161,7 +191,7 @@ export async function adminResetPassword(
 }
 
 export async function forgotPassword(email: string) {
-  await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+  await prisma.user.findFirst({ where: { email: email.toLowerCase() } });
   return {
     message:
       "If an account exists for that email, a reset link will be sent when email delivery is configured. Ask an administrator to reset your password for now.",

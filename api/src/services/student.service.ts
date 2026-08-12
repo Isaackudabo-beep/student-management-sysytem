@@ -45,10 +45,9 @@ export async function createStudent(input: CreateStudentInput, actor: AuthUser) 
   }
 
   const schoolClass = assertFound(
-    await prisma.schoolClass.findUnique({ where: { id: input.classId } }),
+    await prisma.schoolClass.findFirst({ where: { id: input.classId, schoolId } }),
     "Class not found"
   );
-  assertSchoolMatch(actor, schoolClass.schoolId, "Class");
 
   const subjects = await prisma.subject.findMany({
     where: { id: { in: uniqueSubjectIds }, schoolId },
@@ -205,35 +204,10 @@ export async function getStudentById(id: string, actor: AuthUser) {
   } as const;
 
   async function load(select: typeof studentSelectWithStatus | typeof studentBaseSelect) {
-    let enrollments;
-    try {
-      enrollments = await prisma.enrollment.findMany({
-        where: { studentId: id },
-        include: { subject: true, score: true },
-        orderBy: [{ session: "desc" }, { term: "asc" }, { createdAt: "asc" }],
-      });
-    } catch (err) {
-      if (!isSchemaMismatch(err)) throw err;
-      enrollments = await prisma.enrollment.findMany({
-        where: { studentId: id },
-        include: { subject: true, score: true },
-        orderBy: [{ session: "desc" }, { createdAt: "asc" }],
-      });
-    }
-
-    let archivedResults: Awaited<ReturnType<typeof prisma.resultArchive.findMany>> = [];
-    try {
-      archivedResults = await prisma.resultArchive.findMany({
-        where: { studentId: id },
-        orderBy: [{ session: "desc" }, { term: "asc" }, { archivedAt: "desc" }],
-      });
-    } catch {
-      archivedResults = [];
-    }
-
+    const schoolId = requireSchoolId(actor);
     const student = assertFound(
-      await prisma.student.findUnique({
-        where: { id },
+      await prisma.student.findFirst({
+        where: { id, schoolId },
         select: {
           ...select,
           user: { select: userSelect },
@@ -242,7 +216,32 @@ export async function getStudentById(id: string, actor: AuthUser) {
       }),
       "Student not found"
     );
-    assertSchoolMatch(actor, student.schoolId, "Student");
+
+    let enrollments;
+    try {
+      enrollments = await prisma.enrollment.findMany({
+        where: { studentId: id, student: { schoolId } },
+        include: { subject: true, score: true },
+        orderBy: [{ session: "desc" }, { term: "asc" }, { createdAt: "asc" }],
+      });
+    } catch (err) {
+      if (!isSchemaMismatch(err)) throw err;
+      enrollments = await prisma.enrollment.findMany({
+        where: { studentId: id, student: { schoolId } },
+        include: { subject: true, score: true },
+        orderBy: [{ session: "desc" }, { createdAt: "asc" }],
+      });
+    }
+
+    let archivedResults: Awaited<ReturnType<typeof prisma.resultArchive.findMany>> = [];
+    try {
+      archivedResults = await prisma.resultArchive.findMany({
+        where: { studentId: id, student: { schoolId } },
+        orderBy: [{ session: "desc" }, { term: "asc" }, { archivedAt: "desc" }],
+      });
+    } catch {
+      archivedResults = [];
+    }
 
     return { ...withAcademicStatus(student), enrollments, archivedResults };
   }

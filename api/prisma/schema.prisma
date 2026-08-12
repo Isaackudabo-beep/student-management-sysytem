@@ -75,7 +75,8 @@ model School {
 model User {
   id                 String              @id @default(cuid())
   fullName           String
-  email              String              @unique
+  /// Unique per school (and uniquely among SUPER_ADMIN with null schoolId via partial indexes).
+  email              String
   passwordHash       String
   role               Role
   /// Null only for SUPER_ADMIN (platform-level). Required for school roles.
@@ -91,6 +92,7 @@ model User {
   announcementReads  AnnouncementRead[]
   targetedAnnouncements Announcement[]  @relation("AnnouncementTargetUser")
 
+  @@index([email])
   @@index([schoolId])
   @@index([role])
 }

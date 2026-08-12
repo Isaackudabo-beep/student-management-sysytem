@@ -16,7 +16,7 @@ import type { AuthUser, Role } from "./types";
 type AuthContextValue = {
   user: AuthUser | null;
   loading: boolean;
-  login: (email: string, password: string, expectedRole: Role) => Promise<AuthUser>;
+  login: (email: string, password: string, expectedRole: Role, schoolCode?: string) => Promise<AuthUser>;
   logout: () => void;
   refresh: () => Promise<void>;
 };
@@ -69,13 +69,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
-  const login = useCallback(async (email: string, password: string, expectedRole: Role) => {
+  const login = useCallback(async (email: string, password: string, expectedRole: Role, schoolCode?: string) => {
     const res = await api<{
       success: true;
       data: { token: string; user: AuthUser };
     }>("/api/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password, expectedRole }),
+      body: JSON.stringify({
+        email,
+        password,
+        expectedRole,
+        ...(schoolCode?.trim() ? { schoolCode: schoolCode.trim() } : {}),
+      }),
     });
     setToken(res.data.token);
     const mapped = mapUser(res.data.user);

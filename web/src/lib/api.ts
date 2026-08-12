@@ -14,11 +14,13 @@ export type ApiError = {
 export class ApiRequestError extends Error {
   status: number;
   details?: unknown;
+  code?: string;
 
-  constructor(status: number, message: string, details?: unknown) {
+  constructor(status: number, message: string, details?: unknown, code?: string) {
     super(message);
     this.status = status;
     this.details = details;
+    this.code = code;
   }
 }
 
@@ -117,7 +119,8 @@ export async function api<T>(
     throw new ApiRequestError(
       res.status,
       body.message ?? "Request failed",
-      body.details
+      body.details,
+      body.code
     );
   }
 

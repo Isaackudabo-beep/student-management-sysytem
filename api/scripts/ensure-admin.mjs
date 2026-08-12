@@ -57,7 +57,7 @@ async function main() {
         },
       }));
 
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await prisma.user.findFirst({ where: { email, schoolId: defaultSchool.id } });
     if (!existing) {
       await prisma.user.create({
         data: {
