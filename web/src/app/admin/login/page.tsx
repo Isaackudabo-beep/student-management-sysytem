@@ -16,14 +16,13 @@ export default function SuperAdminLoginPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (user?.role === "SUPER_ADMIN") {
+    if (!user) return;
+    if (user.role === "SUPER_ADMIN") {
       router.replace("/admin/dashboard");
       return;
     }
-    // Wrong role holding a school session must not stay on this page as if authorized.
-    if (user && user.role !== "SUPER_ADMIN") {
-      logout();
-    }
+    // School-role sessions must not linger on the platform login page.
+    logout();
   }, [loading, user, router, logout]);
 
   async function onSubmit(e: FormEvent) {
