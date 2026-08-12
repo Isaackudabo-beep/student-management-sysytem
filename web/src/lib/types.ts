@@ -11,6 +11,8 @@ export type AuthUser = {
   role: Role;
   mustChangePassword?: boolean;
   schoolId?: string | null;
+  schoolName?: string | null;
+  schoolCode?: string | null;
   studentId?: string | null;
   teacherId?: string | null;
 };

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { dashboardPath, useAuth } from "@/lib/auth";
+import { dashboardPath, schoolBrandName, useAuth } from "@/lib/auth";
 import { NotificationBell } from "@/components/NotificationBell";
 import { NAV_ICONS } from "@/components/NavIcons";
 import type { Role } from "@/lib/types";
@@ -78,6 +78,16 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
     };
   }, [menuOpen]);
 
+  useEffect(() => {
+    if (!user || user.role === "SUPER_ADMIN") return;
+    const brand = schoolBrandName(user);
+    const previous = document.title;
+    document.title = `${title} · ${brand}`;
+    return () => {
+      document.title = previous;
+    };
+  }, [user, title]);
+
   if (loading || !user) {
     return (
       <main className="grid min-h-screen place-items-center text-muted">
@@ -104,13 +114,16 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
   }
 
   const links = NAV.filter((item) => item.roles.includes(user.role));
+  const brand = schoolBrandName(user);
 
   return (
     <div className="mx-auto flex min-h-screen max-w-7xl gap-6 px-4 py-6 md:px-6">
       <aside className="no-print hidden w-64 shrink-0 rounded-3xl border border-line bg-bg-elevated p-5 shadow-[var(--shadow)] md:block">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand">SMS</p>
-        <h2 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold">
-          School Desk
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand">
+          {user.schoolCode || "School"}
+        </p>
+        <h2 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold leading-tight">
+          {brand}
         </h2>
         <p className="mt-2 text-sm text-muted">
           {user.fullName} · {user.role}
@@ -198,9 +211,11 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
           <div className="absolute inset-y-0 left-0 flex w-[min(85vw,20rem)] animate-[slideInLeft_0.25s_ease-out] flex-col bg-bg-elevated p-5 shadow-[var(--shadow)]">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand">SMS</p>
-                <h2 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold">
-                  School Desk
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand">
+                  {user.schoolCode || "School"}
+                </p>
+                <h2 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold leading-tight">
+                  {brand}
                 </h2>
                 <p className="mt-1 text-sm text-muted">
                   {user.fullName} · {user.role}

@@ -14,6 +14,7 @@ function publicUser(user: {
   schoolId?: string | null;
   student?: { id: string } | null;
   teacher?: { id: string } | null;
+  school?: { id: string; name: string; code?: string } | null;
 }) {
   return {
     id: user.id,
@@ -22,6 +23,8 @@ function publicUser(user: {
     role: user.role,
     mustChangePassword: user.mustChangePassword,
     schoolId: user.schoolId ?? null,
+    schoolName: user.school?.name ?? null,
+    schoolCode: user.school?.code ?? null,
     studentId: user.student?.id ?? null,
     teacherId: user.teacher?.id ?? null,
   };
@@ -33,7 +36,7 @@ export async function login(email: string, password: string, expectedRole: Role)
     include: {
       student: { select: { id: true } },
       teacher: { select: { id: true } },
-      school: { select: { id: true, status: true, name: true } },
+      school: { select: { id: true, status: true, name: true, code: true } },
     },
   });
 
@@ -97,7 +100,9 @@ export async function getMe(userId: string) {
     ...publicUser(user),
     student: user.student,
     teacher: user.teacher,
-    school: user.school,
+    school: user.school
+      ? { id: user.school.id, name: user.school.name, code: user.school.code, status: user.school.status }
+      : null,
   };
 }
 

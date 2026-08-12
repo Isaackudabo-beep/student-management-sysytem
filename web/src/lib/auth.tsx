@@ -23,7 +23,7 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function mapUser(data: AuthUser & { student?: { id: string }; teacher?: { id: string } }): AuthUser {
+function mapUser(data: AuthUser & { student?: { id: string }; teacher?: { id: string }; school?: { name?: string; code?: string } | null }): AuthUser {
   return {
     id: data.id,
     fullName: data.fullName,
@@ -31,6 +31,8 @@ function mapUser(data: AuthUser & { student?: { id: string }; teacher?: { id: st
     role: data.role,
     mustChangePassword: Boolean(data.mustChangePassword),
     schoolId: data.schoolId ?? null,
+    schoolName: data.schoolName ?? data.school?.name ?? null,
+    schoolCode: data.schoolCode ?? data.school?.code ?? null,
     studentId: data.studentId ?? data.student?.id ?? null,
     teacherId: data.teacherId ?? data.teacher?.id ?? null,
   };
@@ -106,6 +108,12 @@ export function dashboardPath(role: Role) {
   if (role === "ADMIN") return "/dashboard/admin";
   if (role === "TEACHER") return "/dashboard/teacher";
   return "/dashboard/student";
+}
+
+/** Display name for the signed-in school portal (falls back for legacy accounts). */
+export function schoolBrandName(user: AuthUser | null | undefined) {
+  const name = user?.schoolName?.trim();
+  return name || "School Desk";
 }
 
 export function loginPath(role: Role) {

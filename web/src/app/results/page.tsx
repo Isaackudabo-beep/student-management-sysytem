@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button, Card, ErrorText, Select } from "@/components/ui";
 import { api, formatApiError } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { schoolBrandName, useAuth } from "@/lib/auth";
 
 type ResultRow = {
   id: string;
@@ -258,7 +258,7 @@ export default function ResultsPage() {
           >
             <div className="bg-brand px-6 py-6 text-white sm:px-8">
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">
-                School Desk · Academic Report
+                {schoolBrandName(user)} · Academic Report
               </p>
               <h2 className="mt-2 font-[family-name:var(--font-display)] text-3xl font-semibold">
                 Result Slip

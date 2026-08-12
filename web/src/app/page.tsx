@@ -2,7 +2,7 @@
 
 // Purpose: Landing — three role portals for secondary school SMS.
 import Link from "next/link";
-import { dashboardPath, useAuth } from "@/lib/auth";
+import { dashboardPath, schoolBrandName, useAuth } from "@/lib/auth";
 import { IconAdmin, IconStudentPortal, IconTeacherPortal } from "@/components/NavIcons";
 
 const PORTALS = [
@@ -57,7 +57,13 @@ export default function HomePage() {
 
       {user ? (
         <div className="mt-8 max-w-xl rounded-2xl border border-line bg-bg-elevated p-5 shadow-[var(--shadow)]">
-          <p className="text-sm text-muted">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand">
+            {user.schoolCode || (user.role === "SUPER_ADMIN" ? "Platform" : "School")}
+          </p>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold text-ink">
+            {user.role === "SUPER_ADMIN" ? "Super Admin" : schoolBrandName(user)}
+          </p>
+          <p className="mt-1 text-sm text-muted">
             Signed in as <span className="font-semibold text-ink">{user.fullName}</span> ({user.role})
           </p>
           <Link

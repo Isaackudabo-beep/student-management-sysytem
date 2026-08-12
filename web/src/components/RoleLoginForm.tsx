@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { dashboardPath, useAuth } from "@/lib/auth";
+import { dashboardPath, schoolBrandName, useAuth } from "@/lib/auth";
 import { ApiRequestError } from "@/lib/api";
 import type { Role } from "@/lib/types";
 
@@ -35,7 +35,6 @@ export function RoleLoginForm({ role }: { role: Role }) {
   const { login, user, loading, logout } = useAuth();
   const router = useRouter();
   const meta = COPY[role];
-  // Empty by default so opening a portal never looks like an automatic login.
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -46,14 +45,17 @@ export function RoleLoginForm({ role }: { role: Role }) {
     setError("");
     setSubmitting(true);
     try {
-      const user = await login(email, password, role);
-      router.replace(user.mustChangePassword ? "/change-password" : dashboardPath(user.role));
+      const signedIn = await login(email, password, role);
+      router.replace(
+        signedIn.mustChangePassword ? "/change-password" : dashboardPath(signedIn.role)
+      );
     } catch (err) {
       if (err instanceof ApiRequestError) {
         setError(err.message);
       } else if (err instanceof TypeError) {
-        // fetch() throws TypeError when the API is unreachable (offline / not started)
-        setError(`Cannot reach the API at ${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}. Check that the backend is online.`);
+        setError(
+          `Cannot reach the API at ${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}. Check that the backend is online.`
+        );
       } else {
         setError(err instanceof Error ? err.message : "Login failed");
       }
@@ -71,23 +73,28 @@ export function RoleLoginForm({ role }: { role: Role }) {
   }
 
   if (user) {
+    const brand = schoolBrandName(user);
     return (
       <main className="grid min-h-screen place-items-center px-4">
         <div className="w-full max-w-md rounded-3xl border border-line bg-bg-elevated p-8 shadow-[var(--shadow)]">
           <Link href="/" className="text-sm font-semibold text-brand">
             ← Back
           </Link>
-          <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl font-semibold">
-            {meta.title}
+          <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-brand">
+            {user.schoolCode || "School"}
+          </p>
+          <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl font-semibold">
+            {brand}
           </h1>
+          <p className="mt-1 text-sm font-semibold text-ink">{meta.title}</p>
           <p className="mt-2 text-muted">
-            You are already signed in as {user.fullName} ({user.role}).
+            Signed in as {user.fullName} ({user.role}).
           </p>
           <Link
             href={user.mustChangePassword ? "/change-password" : dashboardPath(user.role)}
             className="mt-6 block w-full rounded-xl bg-brand py-3 text-center font-semibold text-white"
           >
-            Continue to dashboard
+            Continue to {brand}
           </Link>
           <button
             type="button"
@@ -118,6 +125,9 @@ export function RoleLoginForm({ role }: { role: Role }) {
           {meta.title}
         </h1>
         <p className="mt-2 text-muted">{meta.blurb}</p>
+        <p className="mt-1 text-sm text-muted">
+          After sign-in, this workspace shows your school’s name.
+        </p>
 
         <label className="mt-6 block text-sm font-medium">
           Email

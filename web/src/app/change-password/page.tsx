@@ -4,7 +4,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiRequestError } from "@/lib/api";
-import { dashboardPath, useAuth } from "@/lib/auth";
+import { dashboardPath, schoolBrandName, useAuth } from "@/lib/auth";
 
 export default function ChangePasswordPage() {
   const { user, refresh, logout } = useAuth();
@@ -45,6 +45,9 @@ export default function ChangePasswordPage() {
         <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold">
           Change password
         </h1>
+        {user?.schoolName ? (
+          <p className="mt-1 text-sm font-semibold text-brand">{schoolBrandName(user)}</p>
+        ) : null}
         <p className="mt-2 text-muted">
           {user?.mustChangePassword
             ? "An administrator reset your password. Choose a new one to continue."
