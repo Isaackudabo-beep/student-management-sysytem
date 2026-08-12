@@ -173,14 +173,14 @@ export async function listScores(params) {
     }
 }
 export async function getStudentResults(studentId, actor) {
-    requireSchoolId(actor);
+    const schoolId = requireSchoolId(actor);
     if (actor.role === "STUDENT" && actor.studentId !== studentId) {
         throw new AppError(403, "Students can only view their own results");
     }
     let student;
     try {
-        student = assertFound(await prisma.student.findUnique({
-            where: { id: studentId },
+        student = assertFound(await prisma.student.findFirst({
+            where: { id: studentId, schoolId },
             select: {
                 ...studentSelectWithStatus,
                 schoolClass: true,
@@ -191,8 +191,8 @@ export async function getStudentResults(studentId, actor) {
     catch (err) {
         if (!isSchemaMismatch(err))
             throw err;
-        student = assertFound(await prisma.student.findUnique({
-            where: { id: studentId },
+        student = assertFound(await prisma.student.findFirst({
+            where: { id: studentId, schoolId },
             select: {
                 ...studentBaseSelect,
                 schoolClass: true,
@@ -200,12 +200,11 @@ export async function getStudentResults(studentId, actor) {
             },
         }), "Student not found");
     }
-    assertSchoolMatch(actor, student.schoolId, "Student");
     student = withAcademicStatus(student);
     let enrollments;
     try {
         enrollments = await prisma.enrollment.findMany({
-            where: { studentId },
+            where: { studentId, student: { schoolId } },
             include: {
                 subject: true,
                 score: { include: { teacher: true } },
@@ -217,7 +216,7 @@ export async function getStudentResults(studentId, actor) {
         if (!isSchemaMismatch(err))
             throw err;
         enrollments = await prisma.enrollment.findMany({
-            where: { studentId },
+            where: { studentId, student: { schoolId } },
             include: {
                 subject: true,
                 score: { include: { teacher: true } },
@@ -228,7 +227,7 @@ export async function getStudentResults(studentId, actor) {
     let archived = [];
     try {
         archived = await prisma.resultArchive.findMany({
-            where: { studentId },
+            where: { studentId, student: { schoolId } },
             orderBy: [{ session: "desc" }, { term: "asc" }, { archivedAt: "desc" }],
         });
     }

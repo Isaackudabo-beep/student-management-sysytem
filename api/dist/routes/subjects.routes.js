@@ -33,6 +33,15 @@ router.post("/", authorize("ADMIN"), validate(createSubjectSchema), async (req, 
         next(error);
     }
 });
+router.post("/ensure-senior-streams", authorize("ADMIN"), async (req, res, next) => {
+    try {
+        const result = await subjectService.ensureSeniorStreamSubjects(req.user);
+        res.json({ success: true, data: result });
+    }
+    catch (error) {
+        next(error);
+    }
+});
 router.patch("/:id", authorize("ADMIN"), validate(updateSubjectSchema), async (req, res, next) => {
     try {
         const subject = await subjectService.updateSubject(req.params.id, req.body, req.user);

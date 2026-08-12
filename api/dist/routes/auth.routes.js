@@ -3,11 +3,12 @@ import { Router } from "express";
 import { authenticate, authorize } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { adminResetPasswordSchema, changePasswordSchema, forgotPasswordSchema, loginSchema, } from "../validators/schemas.js";
+import { requireSchoolId } from "../lib/schoolScope.js";
 import * as authService from "../services/auth.service.js";
 const router = Router();
 router.post("/login", validate(loginSchema), async (req, res, next) => {
     try {
-        const result = await authService.login(req.body.email, req.body.password, req.body.expectedRole);
+        const result = await authService.login(req.body.email, req.body.password, req.body.expectedRole, req.body.schoolCode);
         res.json({ success: true, data: result });
     }
     catch (error) {
@@ -34,7 +35,7 @@ router.post("/change-password", authenticate, validate(changePasswordSchema), as
 });
 router.post("/admin/reset-password", authenticate, authorize("ADMIN"), validate(adminResetPasswordSchema), async (req, res, next) => {
     try {
-        const result = await authService.adminResetPassword(req.user.schoolId, req.body.userId, req.body.temporaryPassword);
+        const result = await authService.adminResetPassword(requireSchoolId(req.user), req.body.userId, req.body.temporaryPassword);
         res.json({ success: true, data: result });
     }
     catch (error) {

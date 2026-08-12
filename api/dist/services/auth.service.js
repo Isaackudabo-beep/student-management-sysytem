@@ -11,21 +11,45 @@ function publicUser(user) {
         role: user.role,
         mustChangePassword: user.mustChangePassword,
         schoolId: user.schoolId ?? null,
+        schoolName: user.school?.name ?? null,
+        schoolCode: user.school?.code ?? null,
         studentId: user.student?.id ?? null,
         teacherId: user.teacher?.id ?? null,
     };
 }
-export async function login(email, password, expectedRole) {
-    const user = await prisma.user.findUnique({
-        where: { email: email.toLowerCase() },
+export async function login(email, password, expectedRole, schoolCode) {
+    const normalizedEmail = email.toLowerCase().trim();
+    const code = schoolCode?.trim().toUpperCase();
+    const candidates = await prisma.user.findMany({
+        where: {
+            email: normalizedEmail,
+            role: expectedRole,
+            ...(expectedRole === "SUPER_ADMIN"
+                ? { schoolId: null }
+                : code
+                    ? { school: { code: { equals: code, mode: "insensitive" } } }
+                    : {}),
+        },
         include: {
             student: { select: { id: true } },
             teacher: { select: { id: true } },
-            school: { select: { id: true, status: true, name: true } },
+            school: { select: { id: true, status: true, name: true, code: true } },
         },
+        take: 10,
     });
-    if (!user) {
+    if (candidates.length === 0) {
         throw new AppError(401, "Invalid email or password");
+    }
+    if (expectedRole !== "SUPER_ADMIN" && !code && candidates.length > 1) {
+        throw new AppError(400, "This email exists in more than one school. Enter your school code to continue.", { requiresSchoolCode: true, schools: candidates.map((c) => c.school?.code).filter(Boolean) }, "SCHOOL_CODE_REQUIRED");
+    }
+    // Prefer exact school match when code provided; otherwise the sole candidate.
+    let user = candidates[0];
+    if (code && candidates.length > 1) {
+        const matched = candidates.find((c) => c.school?.code?.toUpperCase() === code);
+        if (!matched)
+            throw new AppError(401, "Invalid email or password");
+        user = matched;
     }
     let valid = false;
     try {
@@ -36,9 +60,6 @@ export async function login(email, password, expectedRole) {
     }
     if (!valid) {
         throw new AppError(401, "Invalid email or password");
-    }
-    if (user.role !== expectedRole) {
-        throw new AppError(403, `This portal is for ${expectedRole.toLowerCase().replace("_", " ")}s only`);
     }
     if (user.role === "SUPER_ADMIN") {
         // Platform admins are not tied to a school workspace.
@@ -78,7 +99,9 @@ export async function getMe(userId) {
         ...publicUser(user),
         student: user.student,
         teacher: user.teacher,
-        school: user.school,
+        school: user.school
+            ? { id: user.school.id, name: user.school.name, code: user.school.code, status: user.school.status }
+            : null,
     };
 }
 export async function changePassword(userId, input) {
@@ -127,7 +150,7 @@ export async function adminResetPassword(actorSchoolId, userId, temporaryPasswor
     };
 }
 export async function forgotPassword(email) {
-    await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    await prisma.user.findFirst({ where: { email: email.toLowerCase() } });
     return {
         message: "If an account exists for that email, a reset link will be sent when email delivery is configured. Ask an administrator to reset your password for now.",
         emailConfigured: false,

@@ -67,13 +67,12 @@ function runPrisma(args, opts = {}) {
   return run("npx", ["prisma", ...args], { shell: true, env, ...opts });
 }
 
-if (!fs.existsSync(entry)) {
-  console.warn("dist/index.js missing at start — running build now...");
-  run(process.execPath, [buildScript]);
-}
+// Always rebuild on Render so committed dist cannot drift from src/schema.
+console.log("Building API from source...");
+run(process.execPath, [buildScript]);
 
 if (!fs.existsSync(entry)) {
-  console.error("FATAL: dist/index.js still missing after build.");
+  console.error("FATAL: dist/index.js missing after build.");
   process.exit(1);
 }
 

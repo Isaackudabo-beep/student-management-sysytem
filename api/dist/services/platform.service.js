@@ -111,9 +111,13 @@ export async function createSchool(input) {
         throw new AppError(409, `School code ${code} already exists`);
     if (input.admin) {
         const email = input.admin.email.toLowerCase();
-        const taken = await prisma.user.findUnique({ where: { email } });
-        if (taken)
-            throw new AppError(409, "Admin email is already in use");
+        // Email may exist in another school — only block within the new school after create.
+        // Pre-check platform SUPER_ADMIN collision only.
+        const platformClash = await prisma.user.findFirst({
+            where: { email, schoolId: null },
+        });
+        if (platformClash)
+            throw new AppError(409, "Admin email is already in use on the platform");
     }
     return prisma.$transaction(async (tx) => {
         const school = await tx.school.create({
@@ -174,9 +178,11 @@ export async function setSchoolStatus(id, status) {
 export async function createSchoolAdmin(schoolId, input) {
     assertFound(await prisma.school.findUnique({ where: { id: schoolId } }), "School not found");
     const email = input.email.toLowerCase();
-    const taken = await prisma.user.findUnique({ where: { email } });
+    const taken = await prisma.user.findFirst({
+        where: { email, schoolId },
+    });
     if (taken)
-        throw new AppError(409, "Email is already in use");
+        throw new AppError(409, "Email is already in use at this school");
     const passwordHash = await bcrypt.hash(input.password, 12);
     return prisma.user.create({
         data: {

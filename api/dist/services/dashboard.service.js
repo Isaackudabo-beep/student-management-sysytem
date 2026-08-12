@@ -149,8 +149,9 @@ export async function getDashboardStats(actor) {
     if (actor.role === "TEACHER") {
         if (!actor.teacherId)
             throw new AppError(403, "Teacher profile not found");
+        const schoolId = requireSchoolId(actor);
         const assignments = await prisma.teacherSubject.findMany({
-            where: { teacherId: actor.teacherId },
+            where: { teacherId: actor.teacherId, teacher: { schoolId }, subject: { schoolId } },
             select: {
                 session: true,
                 subjectId: true,
@@ -161,7 +162,7 @@ export async function getDashboardStats(actor) {
         const enrollments = assignmentKeys.length === 0
             ? []
             : await prisma.enrollment.findMany({
-                where: { OR: assignmentKeys },
+                where: { OR: assignmentKeys, student: { schoolId }, subject: { schoolId } },
                 select: {
                     id: true,
                     session: true,
