@@ -14,6 +14,8 @@ const ensureSchemaScript = path.join(apiRoot, "scripts", "ensure-schema.mjs");
 const ensureAdminScript = path.join(apiRoot, "scripts", "ensure-admin.mjs");
 const ensureSuperAdminScript = path.join(apiRoot, "scripts", "ensure-super-admin.mjs");
 const ensureSsSubjectsScript = path.join(apiRoot, "scripts", "ensure-ss-subjects.mjs");
+const ensureJssSubjectsScript = path.join(apiRoot, "scripts", "ensure-jss-subjects.mjs");
+const ensureDefaultClassesScript = path.join(apiRoot, "scripts", "ensure-default-classes.mjs");
 const prismaBin = path.join(
   apiRoot,
   "node_modules",
@@ -111,6 +113,12 @@ run(process.execPath, [ensureSuperAdminScript], { env: prismaEnv() });
 
 console.log("Ensuring SS Science / Arts / Commercial subject packs...");
 run(process.execPath, [ensureSsSubjectsScript], { allowFail: true, env: prismaEnv() });
+
+console.log("Ensuring JSS1–JSS3 basic junior subjects...");
+run(process.execPath, [ensureJssSubjectsScript], { allowFail: true, env: prismaEnv() });
+
+console.log("Ensuring default classes (JSS1A → SS3A) for all schools...");
+run(process.execPath, [ensureDefaultClassesScript], { allowFail: true, env: prismaEnv() });
 
 console.log("Starting API:", entry);
 run(process.execPath, [entry]);

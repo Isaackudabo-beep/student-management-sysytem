@@ -1,7 +1,9 @@
 // Purpose: Seed secondary-school demo data — classes, subjects, roles, announcements.
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
+import { buildJssSubjectRows } from "../src/data/jssSubjects.js";
 import { buildSsSubjectRows } from "../src/data/ssSubjects.js";
+import { DEFAULT_CLASSES } from "../src/lib/defaultClasses.js";
 import { calculateGrade } from "../src/utils/grades.js";
 
 const prisma = new PrismaClient();
@@ -46,17 +48,10 @@ async function main() {
   });
 
   const classes = await Promise.all(
-    [
-      { name: "JSS1A", level: "JSS1", arm: "A" },
-      { name: "JSS2A", level: "JSS2", arm: "A" },
-      { name: "JSS3A", level: "JSS3", arm: "A" },
-      { name: "SS1A", level: "SS1", arm: "A" },
-      { name: "SS2B", level: "SS2", arm: "B" },
-      { name: "SS3A", level: "SS3", arm: "A" },
-    ].map((c) => prisma.schoolClass.create({ data: { ...c, schoolId: school.id } }))
+    DEFAULT_CLASSES.map((c) => prisma.schoolClass.create({ data: { ...c, schoolId: school.id } }))
   );
 
-  const ss2Class = classes.find((c) => c.name === "SS2B")!;
+  const ss2Class = classes.find((c) => c.name === "SS2A")!;
 
   const teacherUser = await prisma.user.create({
     data: {
@@ -79,19 +74,8 @@ async function main() {
     include: { teacher: true },
   });
 
-  const jssCore = (level: string, tag: string) => [
-    { code: `ENG${tag}`, title: "English Language", unit: 3, semester: 1, level },
-    { code: `MTH${tag}`, title: "Mathematics", unit: 3, semester: 1, level },
-    { code: `BSC${tag}`, title: "Basic Science", unit: 3, semester: 1, level },
-    { code: `BST${tag}`, title: "Basic Technology", unit: 2, semester: 1, level },
-    { code: `CCA${tag}`, title: "Creative Arts", unit: 2, semester: 1, level },
-    { code: `PHE${tag}`, title: "Physical Education", unit: 2, semester: 1, level },
-  ];
-
   const allSubjectRows = [
-    ...jssCore("JSS1", "J1"),
-    ...jssCore("JSS2", "J2"),
-    ...jssCore("JSS3", "J3"),
+    ...buildJssSubjectRows(),
     ...buildSsSubjectRows().map(({ pack: _pack, ...row }) => row),
   ];
 

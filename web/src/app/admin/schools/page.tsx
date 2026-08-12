@@ -3,6 +3,7 @@
 // Purpose: Super Admin school list, create, activate/suspend, search.
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
+import { SchoolCodeBadge } from "@/components/SchoolCodeBadge";
 import { SuperAdminShell } from "@/components/SuperAdminShell";
 import { Button, ErrorText, Input, Label, Select } from "@/components/ui";
 import { api, formatApiError } from "@/lib/api";
@@ -199,9 +200,10 @@ export default function AdminSchoolsPage() {
             className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-[#122833] p-5 md:flex-row md:items-center md:justify-between"
           >
             <div>
-              <p className="font-semibold">
-                {s.name}{" "}
-                <span className="text-sm font-normal text-white/50">({s.code})</span>
+              <p className="font-semibold">{s.name}</p>
+              <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/60">
+                <span>Login code:</span>
+                <SchoolCodeBadge code={s.code} />
               </p>
               <p className="mt-1 text-sm text-white/60">
                 {s.status} · {s._count.students} students · {s._count.teachers} teachers ·{" "}

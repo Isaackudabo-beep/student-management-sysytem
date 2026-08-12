@@ -19,6 +19,7 @@ export default function SubjectsPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [seedingJunior, setSeedingJunior] = useState(false);
   const [searching, setSearching] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -70,6 +71,23 @@ export default function SubjectsPage() {
       setError(err instanceof ApiRequestError ? err.message : "Create failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onEnsureJunior() {
+    setSeedingJunior(true);
+    setError("");
+    try {
+      const res = await api<{
+        success: true;
+        data: { message: string; created: number; skipped: number };
+      }>("/api/subjects/ensure-junior", { method: "POST" });
+      toast.success(res.data.message);
+      await load();
+    } catch (err) {
+      setError(formatApiError(err, "Could not add junior subjects"));
+    } finally {
+      setSeedingJunior(false);
     }
   }
 
@@ -148,13 +166,27 @@ export default function SubjectsPage() {
                 Add subject
               </h2>
               <p className="mt-1 text-sm text-muted">
-                For senior school, use Add Arts & Commercial packs to fill missing stream subjects
-                (SS1–SS3).
+                Use the buttons to fill missing junior (JSS1–JSS3) or senior stream (SS1–SS3) subjects.
               </p>
             </div>
-            <Button type="button" variant="secondary" loading={seeding} onClick={() => void onEnsureStreams()}>
-              Add Arts & Commercial packs
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                loading={seedingJunior}
+                onClick={() => void onEnsureJunior()}
+              >
+                Add junior subjects
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                loading={seeding}
+                onClick={() => void onEnsureStreams()}
+              >
+                Add Arts & Commercial packs
+              </Button>
+            </div>
           </div>
           <form onSubmit={onCreate} className="mt-4 grid gap-3 md:grid-cols-5">
             <div>

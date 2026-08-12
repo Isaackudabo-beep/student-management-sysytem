@@ -1,3 +1,4 @@
+import { buildJssSubjectRows } from "../data/jssSubjects.js";
 import { buildSsSubjectRows } from "../data/ssSubjects.js";
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
@@ -105,10 +106,7 @@ export async function deleteSubject(id, actor) {
     await prisma.subject.delete({ where: { id } });
     return { message: "Subject deleted" };
 }
-/** Upsert missing SS1–SS3 core + Science / Arts / Commercial packs for this school. */
-export async function ensureSeniorStreamSubjects(actor) {
-    const schoolId = requireSchoolId(actor);
-    const rows = buildSsSubjectRows();
+async function ensureSubjectRows(schoolId, rows) {
     let created = 0;
     let skipped = 0;
     for (const row of rows) {
@@ -131,6 +129,22 @@ export async function ensureSeniorStreamSubjects(actor) {
         });
         created += 1;
     }
+    return { created, skipped };
+}
+/** Upsert missing JSS1–JSS3 basic junior subjects for this school. */
+export async function ensureJuniorSubjects(actor) {
+    const schoolId = requireSchoolId(actor);
+    const { created, skipped } = await ensureSubjectRows(schoolId, buildJssSubjectRows());
+    return {
+        message: `Junior subjects ready: ${created} added, ${skipped} already present`,
+        created,
+        skipped,
+    };
+}
+/** Upsert missing SS1–SS3 core + Science / Arts / Commercial packs for this school. */
+export async function ensureSeniorStreamSubjects(actor) {
+    const schoolId = requireSchoolId(actor);
+    const { created, skipped } = await ensureSubjectRows(schoolId, buildSsSubjectRows().map(({ pack: _pack, ...row }) => row));
     return {
         message: `Senior subjects ready: ${created} added, ${skipped} already present`,
         created,

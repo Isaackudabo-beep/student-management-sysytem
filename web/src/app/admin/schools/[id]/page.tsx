@@ -4,6 +4,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { SchoolCodeBadge } from "@/components/SchoolCodeBadge";
 import { SuperAdminShell } from "@/components/SuperAdminShell";
 import { Button, ErrorText, Input, Label } from "@/components/ui";
 import { api, formatApiError } from "@/lib/api";
@@ -108,13 +109,15 @@ export default function AdminSchoolDetailPage() {
       {!data ? (
         <p className="text-white/60">Loading…</p>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-6">
+          <SchoolCodeBadge code={data.code} variant="card" />
+          <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-3xl border border-white/10 bg-[#122833] p-5">
             <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
               Edit school information
             </h2>
             <p className="mt-1 text-sm text-white/60">
-              {data.code} · {data.status} · {data._count.students} students · {data._count.teachers}{" "}
+              {data.status} · {data._count.students} students · {data._count.teachers}{" "}
               teachers · {data._count.classes} classes · {data._count.subjects} subjects
             </p>
             <form onSubmit={onSave} className="mt-4 space-y-3">
@@ -217,6 +220,7 @@ export default function AdminSchoolDetailPage() {
               </Button>
             </form>
           </div>
+        </div>
         </div>
       )}
     </SuperAdminShell>

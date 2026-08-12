@@ -1,5 +1,6 @@
 // Purpose: Platform SUPER_ADMIN — schools CRUD, stats, school admin management.
 import bcrypt from "bcryptjs";
+import { ensureDefaultClassesForSchool } from "../lib/defaultClasses.js";
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 function slugCode(input) {
@@ -130,6 +131,7 @@ export async function createSchool(input) {
                 status: "ACTIVE",
             },
         });
+        await ensureDefaultClassesForSchool(school.id, tx);
         let admin = null;
         if (input.admin) {
             const passwordHash = await bcrypt.hash(input.admin.password, 12);

@@ -40,6 +40,15 @@ router.post("/", authorize("ADMIN"), validate(createSubjectSchema), async (req, 
   }
 });
 
+router.post("/ensure-junior", authorize("ADMIN"), async (req, res, next) => {
+  try {
+    const result = await subjectService.ensureJuniorSubjects(req.user!);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post("/ensure-senior-streams", authorize("ADMIN"), async (req, res, next) => {
   try {
     const result = await subjectService.ensureSeniorStreamSubjects(req.user!);

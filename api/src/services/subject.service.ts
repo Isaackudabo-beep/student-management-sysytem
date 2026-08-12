@@ -1,5 +1,6 @@
 // Purpose: Subject CRUD — secondary school levels (JSS1, SS2, etc.).
 import { Prisma } from "@prisma/client";
+import { buildJssSubjectRows } from "../data/jssSubjects.js";
 import { buildSsSubjectRows } from "../data/ssSubjects.js";
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
@@ -159,10 +160,10 @@ export async function deleteSubject(id: string, actor: AuthUser) {
   return { message: "Subject deleted" };
 }
 
-/** Upsert missing SS1–SS3 core + Science / Arts / Commercial packs for this school. */
-export async function ensureSeniorStreamSubjects(actor: AuthUser) {
-  const schoolId = requireSchoolId(actor);
-  const rows = buildSsSubjectRows();
+async function ensureSubjectRows(
+  schoolId: string,
+  rows: Array<{ code: string; title: string; unit: number; semester: number; level: string }>
+) {
   let created = 0;
   let skipped = 0;
 
@@ -187,6 +188,27 @@ export async function ensureSeniorStreamSubjects(actor: AuthUser) {
     created += 1;
   }
 
+  return { created, skipped };
+}
+
+/** Upsert missing JSS1–JSS3 basic junior subjects for this school. */
+export async function ensureJuniorSubjects(actor: AuthUser) {
+  const schoolId = requireSchoolId(actor);
+  const { created, skipped } = await ensureSubjectRows(schoolId, buildJssSubjectRows());
+  return {
+    message: `Junior subjects ready: ${created} added, ${skipped} already present`,
+    created,
+    skipped,
+  };
+}
+
+/** Upsert missing SS1–SS3 core + Science / Arts / Commercial packs for this school. */
+export async function ensureSeniorStreamSubjects(actor: AuthUser) {
+  const schoolId = requireSchoolId(actor);
+  const { created, skipped } = await ensureSubjectRows(
+    schoolId,
+    buildSsSubjectRows().map(({ pack: _pack, ...row }) => row)
+  );
   return {
     message: `Senior subjects ready: ${created} added, ${skipped} already present`,
     created,
