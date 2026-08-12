@@ -18,7 +18,7 @@ export default function CreateSchoolPage() {
     email: "",
     adminFullName: "",
     adminEmail: "",
-    adminPassword: "Password123!",
+    adminPassword: "",
   });
 
   async function onSubmit(e: FormEvent) {
@@ -64,7 +64,8 @@ export default function CreateSchoolPage() {
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="bg-white text-ink"
+              placeholder="e.g. Greenfield Secondary School"
+              className="bg-white text-ink placeholder:text-ink/40"
             />
           </div>
           <div>
@@ -72,8 +73,8 @@ export default function CreateSchoolPage() {
             <Input
               value={form.code}
               onChange={(e) => setForm({ ...form, code: e.target.value })}
-              className="bg-white text-ink"
-              placeholder="AUTO from name"
+              className="bg-white text-ink placeholder:text-ink/40"
+              placeholder="Auto from name if blank"
             />
           </div>
           <div>
@@ -81,7 +82,8 @@ export default function CreateSchoolPage() {
             <Input
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              className="bg-white text-ink"
+              placeholder="School phone"
+              className="bg-white text-ink placeholder:text-ink/40"
             />
           </div>
           <div className="sm:col-span-2">
@@ -89,7 +91,8 @@ export default function CreateSchoolPage() {
             <Input
               value={form.address}
               onChange={(e) => setForm({ ...form, address: e.target.value })}
-              className="bg-white text-ink"
+              placeholder="Street, city, state"
+              className="bg-white text-ink placeholder:text-ink/40"
             />
           </div>
           <div className="sm:col-span-2">
@@ -98,7 +101,8 @@ export default function CreateSchoolPage() {
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="bg-white text-ink"
+              placeholder="info@school.edu"
+              className="bg-white text-ink placeholder:text-ink/40"
             />
           </div>
           <div className="sm:col-span-2 mt-2 border-t border-white/10 pt-4">
@@ -109,7 +113,8 @@ export default function CreateSchoolPage() {
             <Input
               value={form.adminFullName}
               onChange={(e) => setForm({ ...form, adminFullName: e.target.value })}
-              className="bg-white text-ink"
+              placeholder="Administrator full name"
+              className="bg-white text-ink placeholder:text-ink/40"
             />
           </div>
           <div>
@@ -118,15 +123,19 @@ export default function CreateSchoolPage() {
               type="email"
               value={form.adminEmail}
               onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
-              className="bg-white text-ink"
+              placeholder="admin@school.edu"
+              className="bg-white text-ink placeholder:text-ink/40"
             />
           </div>
           <div className="sm:col-span-2">
             <Label>Temp password</Label>
             <Input
+              type="password"
               value={form.adminPassword}
               onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
-              className="bg-white text-ink"
+              placeholder="Min. 8 characters (required if email set)"
+              minLength={8}
+              className="bg-white text-ink placeholder:text-ink/40"
             />
           </div>
           <div className="sm:col-span-2">

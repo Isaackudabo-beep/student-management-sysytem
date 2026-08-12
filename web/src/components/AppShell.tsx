@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { dashboardPath, useAuth } from "@/lib/auth";
 import { NotificationBell } from "@/components/NotificationBell";
+import { NAV_ICONS } from "@/components/NavIcons";
 import type { Role } from "@/lib/types";
 
 const NAV: Array<{ href: string; label: string; roles: Role[] }> = [
@@ -115,20 +116,32 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
           {user.fullName} · {user.role}
         </p>
         <nav className="mt-8 space-y-1">
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={clsx(
-                "block rounded-xl px-3 py-2 text-sm font-semibold transition",
-                pathname === link.href || pathname.startsWith(link.href + "/")
-                  ? "bg-brand text-white"
-                  : "text-ink hover:bg-brand-soft"
-              )}
-            >
-              {link.label}
-            </Link>
-          ))}
+          {links.map((link) => {
+            const Icon = NAV_ICONS[link.label];
+            const active = pathname === link.href || pathname.startsWith(link.href + "/");
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={clsx(
+                  "flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition",
+                  active ? "bg-brand text-white" : "text-ink hover:bg-brand-soft"
+                )}
+              >
+                {Icon ? (
+                  <span
+                    className={clsx(
+                      "grid h-8 w-8 place-items-center rounded-lg",
+                      active ? "bg-white/15" : "bg-brand-soft text-brand"
+                    )}
+                  >
+                    <Icon className="h-4 w-4 fill-none stroke-current stroke-2" />
+                  </span>
+                ) : null}
+                {link.label}
+              </Link>
+            );
+          })}
         </nav>
         <button
           type="button"
@@ -205,21 +218,33 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
               </button>
             </div>
             <nav className="mt-6 flex-1 space-y-1 overflow-y-auto">
-              {links.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMenuOpen(false)}
-                  className={clsx(
-                    "block rounded-xl px-3 py-3 text-sm font-semibold transition",
-                    pathname === link.href || pathname.startsWith(link.href + "/")
-                      ? "bg-brand text-white"
-                      : "text-ink hover:bg-brand-soft"
-                  )}
-                >
-                  {link.label}
-                </Link>
-              ))}
+              {links.map((link) => {
+                const Icon = NAV_ICONS[link.label];
+                const active = pathname === link.href || pathname.startsWith(link.href + "/");
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setMenuOpen(false)}
+                    className={clsx(
+                      "flex items-center gap-2.5 rounded-xl px-3 py-3 text-sm font-semibold transition",
+                      active ? "bg-brand text-white" : "text-ink hover:bg-brand-soft"
+                    )}
+                  >
+                    {Icon ? (
+                      <span
+                        className={clsx(
+                          "grid h-8 w-8 place-items-center rounded-lg",
+                          active ? "bg-white/15" : "bg-brand-soft text-brand"
+                        )}
+                      >
+                        <Icon className="h-4 w-4 fill-none stroke-current stroke-2" />
+                      </span>
+                    ) : null}
+                    {link.label}
+                  </Link>
+                );
+              })}
             </nav>
             <button
               type="button"

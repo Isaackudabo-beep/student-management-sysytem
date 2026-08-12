@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { NAV_ICONS } from "@/components/NavIcons";
 import { BarChart, Card, Stat } from "@/components/ui";
 import { api, ApiRequestError } from "@/lib/api";
 import type { Announcement } from "@/lib/types";
@@ -130,15 +131,23 @@ export default function AdminDashboardPage() {
                 Quick actions
               </h2>
               <div className="mt-4 flex flex-wrap gap-2">
-                {(data.quickActions ?? []).map((a) => (
-                  <Link
-                    key={a.href + a.label}
-                    href={a.href}
-                    className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white"
-                  >
-                    {a.label}
-                  </Link>
-                ))}
+                {(data.quickActions ?? []).map((a) => {
+                  const Icon =
+                    NAV_ICONS[a.label] ||
+                    Object.entries(NAV_ICONS).find(([k]) =>
+                      a.label.toLowerCase().includes(k.toLowerCase())
+                    )?.[1];
+                  return (
+                    <Link
+                      key={a.href + a.label}
+                      href={a.href}
+                      className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white"
+                    >
+                      {Icon ? <Icon className="h-4 w-4 fill-none stroke-current stroke-2" /> : null}
+                      {a.label}
+                    </Link>
+                  );
+                })}
               </div>
             </Card>
 

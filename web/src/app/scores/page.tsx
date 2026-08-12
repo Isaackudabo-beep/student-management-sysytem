@@ -162,19 +162,42 @@ export default function ScoresPage() {
           Enter scores by class
         </h2>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <div>
+          <div className="md:col-span-2">
             <Label>Class</Label>
-            <Select value={classId} onChange={(e) => { setClassId(e.target.value); setSubjectId(""); }}>
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
+            {classes.length === 0 ? (
+              <p className="text-sm text-muted">No classes available.</p>
+            ) : (
+              <div className="mt-1 flex flex-wrap gap-2">
+                {classes.map((c) => {
+                  const active = classId === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setClassId(c.id);
+                        setSubjectId("");
+                      }}
+                      className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                        active
+                          ? "border-brand bg-brand text-white"
+                          : "border-line bg-white text-ink hover:border-brand/50"
+                      }`}
+                    >
+                      {c.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <div>
             <Label>Session</Label>
-            <Input value={session} onChange={(e) => setSession(e.target.value)} />
+            <Input
+              value={session}
+              onChange={(e) => setSession(e.target.value)}
+              placeholder="2025/2026"
+            />
           </div>
           <div>
             <Label>Term</Label>
@@ -186,16 +209,35 @@ export default function ScoresPage() {
               ))}
             </Select>
           </div>
-          <div>
+          <div className="md:col-span-4">
             <Label>Subject</Label>
-            <Select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
-              <option value="">Select subject…</option>
-              {subjectsInClass.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
-                </option>
-              ))}
-            </Select>
+            {subjectsInClass.length === 0 ? (
+              <p className="mt-1 text-sm text-muted">
+                {classId
+                  ? "No enrolled subjects for this class/session/term yet."
+                  : "Choose a class first."}
+              </p>
+            ) : (
+              <div className="mt-1 flex flex-wrap gap-2">
+                {subjectsInClass.map((s) => {
+                  const active = subjectId === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSubjectId(s.id)}
+                      className={`rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
+                        active
+                          ? "border-brand bg-brand text-white"
+                          : "border-line bg-white text-ink hover:border-brand/50"
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </Card>

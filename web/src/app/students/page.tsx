@@ -7,16 +7,17 @@ import { Button, Card, ErrorText, Input, Label, Select, useToast } from "@/compo
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { SchoolClass, Student, Subject } from "@/lib/types";
+import { STREAM_OPTIONS, subjectMatchesDepartment } from "@/lib/subjectStreams";
 
 const emptyForm = {
   firstName: "",
   lastName: "",
   email: "",
-  password: "Password123!",
+  password: "",
   admissionNumber: "",
   phone: "",
   gender: "MALE",
-  dateOfBirth: "2009-01-15",
+  dateOfBirth: "",
   address: "",
   parentName: "",
   parentPhone: "",
@@ -108,21 +109,26 @@ export default function StudentsPage() {
     }
 
     const level = selectedClass.level;
+    const isSenior = /^SS/i.test(level);
     let cancelled = false;
     setSubjectsLoading(true);
     setSubjects([]);
 
     api<{ success: true; data: Subject[] }>(
-      `/api/subjects?level=${encodeURIComponent(level)}&limit=100`
+      `/api/subjects?level=${encodeURIComponent(level)}&limit=200`
     )
       .then((res) => {
         if (cancelled) return;
-        const rows = Array.isArray(res.data) ? res.data : [];
+        let rows = Array.isArray(res.data) ? res.data : [];
+        if (isSenior) {
+          rows = rows.filter((s) => subjectMatchesDepartment(s.code, form.department));
+        }
         setSubjects(rows);
-        // Pre-select up to 6 so registration is not blocked by an empty checklist.
         setSelectedSubjects(rows.slice(0, Math.min(6, rows.length)).map((s) => s.id));
         if (rows.length === 0) {
-          setError(`No subjects found for level ${level}. Add subjects for this level first.`);
+          setError(
+            `No subjects found for ${level}${isSenior ? ` / ${form.department}` : ""}. Add subjects under Subjects (use Add Arts & Commercial packs for senior streams).`
+          );
         }
       })
       .catch((err) => {
@@ -137,7 +143,7 @@ export default function StudentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedClass?.id, selectedClass?.level]);
+  }, [selectedClass?.id, selectedClass?.level, form.department]);
 
   function toggleSubject(id: string) {
     setSelectedSubjects((prev) =>
@@ -263,29 +269,47 @@ export default function StudentsPage() {
           <form onSubmit={onCreate} className="mt-4 grid gap-3 md:grid-cols-2">
             {(
               [
-                ["firstName", "First name"],
-                ["lastName", "Last name"],
-                ["email", "Email"],
-                ["admissionNumber", "Admission number"],
-                ["phone", "Phone"],
-                ["address", "Address"],
-                ["parentName", "Parent / Guardian name"],
-                ["parentPhone", "Parent / Guardian phone"],
-                ["department", "Stream / Department"],
-                ["session", "Session"],
-                ["password", "Temporary password"],
+                ["firstName", "First name", "e.g. Ada"],
+                ["lastName", "Last name", "e.g. Okeke"],
+                ["email", "Email", "student@school.edu"],
+                ["admissionNumber", "Admission number", "e.g. ADM/SS2/012"],
+                ["phone", "Phone", "080…"],
+                ["address", "Address", "Home address"],
+                ["parentName", "Parent / Guardian name", "Guardian full name"],
+                ["parentPhone", "Parent / Guardian phone", "080…"],
+                ["session", "Session", "2025/2026"],
+                ["password", "Temporary password", "Min. 8 characters"],
               ] as const
-            ).map(([field, label]) => (
+            ).map(([field, label, placeholder]) => (
               <div key={field}>
                 <Label>{label}</Label>
                 <Input
                   value={form[field]}
                   onChange={(e) => setForm({ ...form, [field]: e.target.value })}
                   required
-                  type={field === "email" ? "email" : "text"}
+                  type={field === "email" ? "email" : field === "password" ? "password" : "text"}
+                  placeholder={placeholder}
+                  minLength={field === "password" ? 8 : undefined}
                 />
               </div>
             ))}
+            <div>
+              <Label>Stream / Department</Label>
+              <Select
+                value={form.department}
+                onChange={(e) => setForm({ ...form, department: e.target.value })}
+                required
+              >
+                {STREAM_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </Select>
+              <p className="mt-1 text-xs text-muted">
+                Senior subjects filter to this stream (Arts / Commercial / Science).
+              </p>
+            </div>
             <div>
               <Label>Gender</Label>
               <Select
@@ -308,24 +332,44 @@ export default function StudentsPage() {
             </div>
             <div className="md:col-span-2">
               <Label>Class</Label>
-              <Select
-                value={form.classId}
-                onChange={(e) => setForm({ ...form, classId: e.target.value })}
-                required
-              >
-                <option value="">Select class</option>
-                {classes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.level})
-                  </option>
-                ))}
-              </Select>
+              {classes.length === 0 ? (
+                <p className="text-sm text-muted">No classes yet. Create classes first.</p>
+              ) : (
+                <div className="mt-1 flex flex-wrap gap-2" role="listbox" aria-label="Select class">
+                  {classes.map((c) => {
+                    const active = form.classId === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onClick={() => setForm({ ...form, classId: c.id })}
+                        className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                          active
+                            ? "border-brand bg-brand text-white"
+                            : "border-line bg-white text-ink hover:border-brand/50"
+                        }`}
+                      >
+                        {c.name}
+                        <span className={active ? "opacity-80" : "text-muted"}> ({c.level})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {!form.classId ? (
+                <p className="mt-2 text-sm text-muted">Tap a class to load matching subjects.</p>
+              ) : null}
             </div>
             <div className="md:col-span-2">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <Label>
-                  Subjects for {selectedClass?.level ?? "class"} ({selectedSubjects.length}/5–11
-                  selected)
+                  Subjects for {selectedClass?.level ?? "class"}
+                  {selectedClass && /^SS/i.test(selectedClass.level)
+                    ? ` · ${form.department}`
+                    : ""}{" "}
+                  ({selectedSubjects.length}/5–11 selected)
                 </Label>
                 {subjects.length > 0 ? (
                   <button
@@ -366,7 +410,9 @@ export default function StudentsPage() {
                   })}
                   {subjects.length === 0 ? (
                     <p className="text-sm text-muted">
-                      No subjects for level {selectedClass.level}. Add them under Subjects first.
+                      No subjects for {selectedClass.level}
+                      {/^SS/i.test(selectedClass.level) ? ` / ${form.department}` : ""}. Open
+                      Subjects and use “Add Arts & Commercial packs”.
                     </p>
                   ) : null}
                 </div>

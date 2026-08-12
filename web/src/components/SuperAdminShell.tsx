@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { useAuth } from "@/lib/auth";
+import { NAV_ICONS } from "@/components/NavIcons";
 
 const NAV: Array<{ href: string; label: string; exact?: boolean }> = [
   { href: "/admin/dashboard", label: "Dashboard", exact: true },
@@ -55,19 +56,28 @@ export function SuperAdminShell({ children, title }: { children: ReactNode; titl
               const active = link.exact
                 ? pathname === link.href
                 : pathname === link.href || pathname.startsWith(link.href + "/");
+              const Icon = NAV_ICONS[link.label];
               return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={clsx(
-                  "block rounded-xl px-3 py-2 text-sm font-semibold transition",
-                  active
-                    ? "bg-[#7ec8c8] text-[#0b1c24]"
-                    : "text-white/80 hover:bg-white/5"
-                )}
-              >
-                {link.label}
-              </Link>
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={clsx(
+                    "flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition",
+                    active ? "bg-[#7ec8c8] text-[#0b1c24]" : "text-white/80 hover:bg-white/5"
+                  )}
+                >
+                  {Icon ? (
+                    <span
+                      className={clsx(
+                        "grid h-8 w-8 place-items-center rounded-lg",
+                        active ? "bg-[#0b1c24]/15" : "bg-white/10 text-[#7ec8c8]"
+                      )}
+                    >
+                      <Icon className="h-4 w-4 fill-none stroke-current stroke-2" />
+                    </span>
+                  ) : null}
+                  {link.label}
+                </Link>
               );
             })}
           </nav>
@@ -116,16 +126,24 @@ export function SuperAdminShell({ children, title }: { children: ReactNode; titl
           <div className="absolute inset-y-0 left-0 w-[min(85vw,18rem)] bg-[#122833] p-5">
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#7ec8c8]">Platform</p>
             <nav className="mt-6 space-y-1">
-              {NAV.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMenuOpen(false)}
-                  className="block rounded-xl px-3 py-3 text-sm font-semibold"
-                >
-                  {link.label}
-                </Link>
-              ))}
+              {NAV.map((link) => {
+                const Icon = NAV_ICONS[link.label];
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-3 text-sm font-semibold"
+                  >
+                    {Icon ? (
+                      <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/10 text-[#7ec8c8]">
+                        <Icon className="h-4 w-4 fill-none stroke-current stroke-2" />
+                      </span>
+                    ) : null}
+                    {link.label}
+                  </Link>
+                );
+              })}
             </nav>
           </div>
         </div>

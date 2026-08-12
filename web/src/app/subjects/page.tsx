@@ -1,19 +1,24 @@
 "use client";
 
-// Purpose: Subjects list + Admin create/delete.
+// Purpose: Subjects list + Admin create/delete + senior stream packs.
 import { FormEvent, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
-import { Button, Card, ErrorText, Input, Label } from "@/components/ui";
-import { api, ApiRequestError } from "@/lib/api";
+import { Button, Card, ErrorText, Input, Label, Select, useToast } from "@/components/ui";
+import { api, ApiRequestError, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { Subject } from "@/lib/types";
 
+const LEVELS = ["JSS1", "JSS2", "JSS3", "SS1", "SS2", "SS3"] as const;
+
 export default function SubjectsPage() {
   const { user } = useAuth();
+  const toast = useToast();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [q, setQ] = useState("");
+  const [levelFilter, setLevelFilter] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const [searching, setSearching] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -24,12 +29,16 @@ export default function SubjectsPage() {
     level: "SS2",
   });
 
-  async function load(search = q) {
+  async function load(search = q, level = levelFilter) {
     try {
-      const res = await api<{ success: true; data: Subject[] }>(
-        `/api/subjects?q=${encodeURIComponent(search)}&limit=100`
-      );
+      const qs = new URLSearchParams({
+        q: search,
+        limit: "200",
+        ...(level ? { level } : {}),
+      });
+      const res = await api<{ success: true; data: Subject[] }>(`/api/subjects?${qs}`);
       setSubjects(res.data);
+      setError("");
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Failed to load");
     }
@@ -54,12 +63,30 @@ export default function SubjectsPage() {
           level: form.level,
         }),
       });
-      setForm({ code: "", title: "", unit: "3", semester: "1", level: "SS2" });
+      setForm({ code: "", title: "", unit: "3", semester: "1", level: form.level });
+      toast.success("Subject created");
       await load();
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Create failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onEnsureStreams() {
+    setSeeding(true);
+    setError("");
+    try {
+      const res = await api<{
+        success: true;
+        data: { message: string; created: number; skipped: number };
+      }>("/api/subjects/ensure-senior-streams", { method: "POST" });
+      toast.success(res.data.message);
+      await load();
+    } catch (err) {
+      setError(formatApiError(err, "Could not add stream subjects"));
+    } finally {
+      setSeeding(false);
     }
   }
 
@@ -81,13 +108,31 @@ export default function SubjectsPage() {
     <AppShell title="Subjects">
       <Card className="mb-6">
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Input placeholder="Search code or title…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input
+            placeholder="Search by code or title…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <Select
+            value={levelFilter}
+            onChange={(e) => {
+              setLevelFilter(e.target.value);
+              void load(q, e.target.value);
+            }}
+          >
+            <option value="">All levels</option>
+            {LEVELS.map((l) => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
+          </Select>
           <Button
             type="button"
             loading={searching}
             onClick={() => {
               setSearching(true);
-              void load(q).finally(() => setSearching(false));
+              void load(q, levelFilter).finally(() => setSearching(false));
             }}
           >
             Search
@@ -97,20 +142,64 @@ export default function SubjectsPage() {
 
       {user?.role === "ADMIN" ? (
         <Card className="mb-6">
-          <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
-            Add subject
-          </h2>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
+                Add subject
+              </h2>
+              <p className="mt-1 text-sm text-muted">
+                For senior school, use Add Arts & Commercial packs to fill missing stream subjects
+                (SS1–SS3).
+              </p>
+            </div>
+            <Button type="button" variant="secondary" loading={seeding} onClick={() => void onEnsureStreams()}>
+              Add Arts & Commercial packs
+            </Button>
+          </div>
           <form onSubmit={onCreate} className="mt-4 grid gap-3 md:grid-cols-5">
-            {(["code", "title", "unit", "semester", "level"] as const).map((field) => (
-              <div key={field}>
-                <Label>{field}</Label>
-                <Input
-                  value={form[field]}
-                  onChange={(e) => setForm({ ...form, [field]: e.target.value })}
-                  required
-                />
-              </div>
-            ))}
+            <div>
+              <Label>Code</Label>
+              <Input
+                placeholder="e.g. LITS2"
+                value={form.code}
+                onChange={(e) => setForm({ ...form, code: e.target.value })}
+                required
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label>Title</Label>
+              <Input
+                placeholder="e.g. Literature in English"
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <Label>Unit</Label>
+              <Input
+                type="number"
+                min={1}
+                max={10}
+                value={form.unit}
+                onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <Label>Level</Label>
+              <Select
+                value={form.level}
+                onChange={(e) => setForm({ ...form, level: e.target.value })}
+                required
+              >
+                {LEVELS.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </Select>
+            </div>
             <div className="md:col-span-5">
               <Button type="submit" loading={busy}>
                 Create subject
@@ -156,6 +245,13 @@ export default function SubjectsPage() {
                   ) : null}
                 </tr>
               ))}
+              {subjects.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-6 text-muted">
+                    No subjects found.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>

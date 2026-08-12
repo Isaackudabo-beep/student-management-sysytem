@@ -63,8 +63,8 @@ export default function SuperAdminLoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="username"
-              placeholder="Enter your email"
-              className="bg-white text-ink"
+              placeholder="you@platform.email"
+              className="bg-white text-ink placeholder:text-ink/40"
             />
           </div>
           <div>
@@ -75,8 +75,8 @@ export default function SuperAdminLoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              placeholder="Enter your password"
-              className="bg-white text-ink"
+              placeholder="Your password"
+              className="bg-white text-ink placeholder:text-ink/40"
             />
           </div>
           <Button type="submit" loading={busy} className="w-full bg-accent">

@@ -13,6 +13,7 @@ const buildScript = path.join(apiRoot, "scripts", "build.mjs");
 const ensureSchemaScript = path.join(apiRoot, "scripts", "ensure-schema.mjs");
 const ensureAdminScript = path.join(apiRoot, "scripts", "ensure-admin.mjs");
 const ensureSuperAdminScript = path.join(apiRoot, "scripts", "ensure-super-admin.mjs");
+const ensureSsSubjectsScript = path.join(apiRoot, "scripts", "ensure-ss-subjects.mjs");
 const prismaBin = path.join(
   apiRoot,
   "node_modules",
@@ -107,6 +108,9 @@ run(process.execPath, [ensureAdminScript], { env: prismaEnv() });
 
 console.log("Ensuring superadmin@sms.local login (seed only — no public signup)...");
 run(process.execPath, [ensureSuperAdminScript], { env: prismaEnv() });
+
+console.log("Ensuring SS Science / Arts / Commercial subject packs...");
+run(process.execPath, [ensureSsSubjectsScript], { allowFail: true, env: prismaEnv() });
 
 console.log("Starting API:", entry);
 run(process.execPath, [entry]);

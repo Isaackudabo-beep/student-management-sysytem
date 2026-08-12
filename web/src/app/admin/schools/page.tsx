@@ -28,7 +28,7 @@ export default function AdminSchoolsPage() {
     code: "",
     adminFullName: "",
     adminEmail: "",
-    adminPassword: "Password123!",
+    adminPassword: "",
   });
 
   async function load(search = q, st = status) {
@@ -72,7 +72,7 @@ export default function AdminSchoolsPage() {
         code: "",
         adminFullName: "",
         adminEmail: "",
-        adminPassword: "Password123!",
+        adminPassword: "",
       });
       await load();
     } catch (err) {
@@ -110,7 +110,8 @@ export default function AdminSchoolsPage() {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               required
-              className="bg-white text-ink"
+              placeholder="e.g. Greenfield Secondary School"
+              className="bg-white text-ink placeholder:text-ink/40"
             />
           </div>
           <div>
@@ -118,7 +119,8 @@ export default function AdminSchoolsPage() {
             <Input
               value={form.code}
               onChange={(e) => setForm({ ...form, code: e.target.value })}
-              className="bg-white text-ink"
+              placeholder="Auto-generated if blank"
+              className="bg-white text-ink placeholder:text-ink/40"
             />
           </div>
           <div>
@@ -127,7 +129,8 @@ export default function AdminSchoolsPage() {
               value={form.adminFullName}
               onChange={(e) => setForm({ ...form, adminFullName: e.target.value })}
               required
-              className="bg-white text-ink"
+              placeholder="School administrator name"
+              className="bg-white text-ink placeholder:text-ink/40"
             />
           </div>
           <div>
@@ -137,16 +140,20 @@ export default function AdminSchoolsPage() {
               value={form.adminEmail}
               onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
               required
-              className="bg-white text-ink"
+              placeholder="admin@school.edu"
+              className="bg-white text-ink placeholder:text-ink/40"
             />
           </div>
           <div>
             <Label>Admin temp password</Label>
             <Input
+              type="password"
               value={form.adminPassword}
               onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
               required
-              className="bg-white text-ink"
+              minLength={8}
+              placeholder="Min. 8 characters"
+              className="bg-white text-ink placeholder:text-ink/40"
             />
           </div>
           <div className="flex items-end">
@@ -159,10 +166,10 @@ export default function AdminSchoolsPage() {
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row">
         <Input
-          placeholder="Search schools…"
+          placeholder="Search by name or code…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          className="bg-white text-ink"
+          className="bg-white text-ink placeholder:text-ink/40"
         />
         <Select
           value={status}

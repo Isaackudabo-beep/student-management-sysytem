@@ -3,6 +3,28 @@
 // Purpose: Landing — three role portals for secondary school SMS.
 import Link from "next/link";
 import { dashboardPath, useAuth } from "@/lib/auth";
+import { IconAdmin, IconStudentPortal, IconTeacherPortal } from "@/components/NavIcons";
+
+const PORTALS = [
+  {
+    href: "/login/admin",
+    label: "Admin Login",
+    blurb: "Manage classes, teachers, and school records",
+    Icon: IconAdmin,
+  },
+  {
+    href: "/login/teacher",
+    label: "Teacher Login",
+    blurb: "Enter scores and view assigned subjects",
+    Icon: IconTeacherPortal,
+  },
+  {
+    href: "/login/student",
+    label: "Student Login",
+    blurb: "Check results and school announcements",
+    Icon: IconStudentPortal,
+  },
+] as const;
 
 export default function HomePage() {
   const { user, loading } = useAuth();
@@ -33,7 +55,6 @@ export default function HomePage() {
         subjects, and publish school announcements.
       </p>
 
-      {/* Valid session only — never auto-redirect; user chooses to continue. */}
       {user ? (
         <div className="mt-8 max-w-xl rounded-2xl border border-line bg-bg-elevated p-5 shadow-[var(--shadow)]">
           <p className="text-sm text-muted">
@@ -48,18 +69,21 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      <div className="mt-10 grid gap-3 sm:grid-cols-3">
-        {[
-          ["/login/admin", "Admin Login"],
-          ["/login/teacher", "Teacher Login"],
-          ["/login/student", "Student Login"],
-        ].map(([href, label]) => (
+      <div className="mt-10 grid gap-4 sm:grid-cols-3">
+        {PORTALS.map(({ href, label, blurb, Icon }) => (
           <Link
             key={href}
             href={href}
-            className="rounded-xl bg-brand px-6 py-3 text-center font-semibold text-white shadow-[var(--shadow)] transition hover:brightness-110"
+            className="group flex flex-col items-center rounded-2xl border border-line bg-bg-elevated p-6 text-center shadow-[var(--shadow)] transition hover:border-brand/40 hover:shadow-md"
           >
-            {label}
+            <span className="grid h-16 w-16 place-items-center rounded-2xl bg-brand-soft text-brand transition group-hover:bg-brand group-hover:text-white">
+              <Icon className="h-8 w-8 fill-none stroke-current stroke-2" />
+            </span>
+            <span className="mt-4 text-lg font-semibold text-ink">{label}</span>
+            <span className="mt-1 text-sm text-muted">{blurb}</span>
+            <span className="mt-4 inline-flex rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white transition group-hover:brightness-110">
+              Sign in
+            </span>
           </Link>
         ))}
       </div>

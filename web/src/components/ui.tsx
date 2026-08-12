@@ -85,7 +85,7 @@ export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
 
 export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <div className="relative">
+    <div className="relative w-full min-w-0">
       <select
         className={clsx(
           "min-h-11 w-full appearance-none rounded-xl border border-line bg-white px-3 py-2.5 pr-10 outline-none ring-brand focus:ring-2 disabled:opacity-60",

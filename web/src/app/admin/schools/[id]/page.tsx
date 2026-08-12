@@ -123,7 +123,8 @@ export default function AdminSchoolDetailPage() {
                 <Input
                   value={edit.name}
                   onChange={(e) => setEdit({ ...edit, name: e.target.value })}
-                  className="bg-white text-ink"
+                  className="bg-white text-ink placeholder:text-ink/40"
+                  placeholder="Official school name"
                   required
                 />
               </div>
@@ -132,8 +133,8 @@ export default function AdminSchoolDetailPage() {
                 <Input
                   value={edit.address}
                   onChange={(e) => setEdit({ ...edit, address: e.target.value })}
-                  className="bg-white text-ink"
-                  placeholder="Street, city"
+                  className="bg-white text-ink placeholder:text-ink/40"
+                  placeholder="Street, city, state"
                 />
               </div>
               <div>
@@ -141,7 +142,7 @@ export default function AdminSchoolDetailPage() {
                 <Input
                   value={edit.phone}
                   onChange={(e) => setEdit({ ...edit, phone: e.target.value })}
-                  className="bg-white text-ink"
+                  className="bg-white text-ink placeholder:text-ink/40"
                   placeholder="Contact phone"
                 />
               </div>
@@ -151,7 +152,7 @@ export default function AdminSchoolDetailPage() {
                   type="email"
                   value={edit.email}
                   onChange={(e) => setEdit({ ...edit, email: e.target.value })}
-                  className="bg-white text-ink"
+                  className="bg-white text-ink placeholder:text-ink/40"
                   placeholder="school@example.com"
                 />
               </div>
@@ -184,7 +185,8 @@ export default function AdminSchoolDetailPage() {
                   value={adminForm.fullName}
                   onChange={(e) => setAdminForm({ ...adminForm, fullName: e.target.value })}
                   required
-                  className="bg-white text-ink"
+                  placeholder="Administrator full name"
+                  className="bg-white text-ink placeholder:text-ink/40"
                 />
               </div>
               <div>
@@ -194,7 +196,8 @@ export default function AdminSchoolDetailPage() {
                   value={adminForm.email}
                   onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })}
                   required
-                  className="bg-white text-ink"
+                  placeholder="admin@school.edu"
+                  className="bg-white text-ink placeholder:text-ink/40"
                 />
               </div>
               <div>
@@ -206,7 +209,7 @@ export default function AdminSchoolDetailPage() {
                   required
                   minLength={8}
                   placeholder="Min. 8 characters"
-                  className="bg-white text-ink"
+                  className="bg-white text-ink placeholder:text-ink/40"
                 />
               </div>
               <Button type="submit" loading={busy} className="bg-[#7ec8c8] text-[#0b1c24]">

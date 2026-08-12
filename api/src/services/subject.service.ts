@@ -1,5 +1,6 @@
 // Purpose: Subject CRUD — secondary school levels (JSS1, SS2, etc.).
 import { Prisma } from "@prisma/client";
+import { buildSsSubjectRows } from "../data/ssSubjects.js";
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { assertSchoolMatch, requireSchoolId } from "../lib/schoolScope.js";
@@ -156,4 +157,39 @@ export async function deleteSubject(id: string, actor: AuthUser) {
 
   await prisma.subject.delete({ where: { id } });
   return { message: "Subject deleted" };
+}
+
+/** Upsert missing SS1–SS3 core + Science / Arts / Commercial packs for this school. */
+export async function ensureSeniorStreamSubjects(actor: AuthUser) {
+  const schoolId = requireSchoolId(actor);
+  const rows = buildSsSubjectRows();
+  let created = 0;
+  let skipped = 0;
+
+  for (const row of rows) {
+    const existing = await prisma.subject.findUnique({
+      where: { schoolId_code: { schoolId, code: row.code } },
+    });
+    if (existing) {
+      skipped += 1;
+      continue;
+    }
+    await prisma.subject.create({
+      data: {
+        schoolId,
+        code: row.code,
+        title: row.title,
+        unit: row.unit,
+        semester: row.semester,
+        level: row.level,
+      },
+    });
+    created += 1;
+  }
+
+  return {
+    message: `Senior subjects ready: ${created} added, ${skipped} already present`,
+    created,
+    skipped,
+  };
 }

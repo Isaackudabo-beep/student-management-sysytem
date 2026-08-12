@@ -1,6 +1,7 @@
 // Purpose: Seed secondary-school demo data — classes, subjects, roles, announcements.
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
+import { buildSsSubjectRows } from "../src/data/ssSubjects.js";
 import { calculateGrade } from "../src/utils/grades.js";
 
 const prisma = new PrismaClient();
@@ -21,6 +22,17 @@ async function main() {
   await prisma.schoolClass.deleteMany();
   await prisma.user.deleteMany();
 
+  const school =
+    (await prisma.school.findFirst({ where: { code: "DEFAULT" } })) ||
+    (await prisma.school.create({
+      data: {
+        id: "school_default_legacy",
+        name: "Default School",
+        code: "DEFAULT",
+        status: "ACTIVE",
+      },
+    }));
+
   const passwordHash = await bcrypt.hash("Password123!", 12);
 
   const admin = await prisma.user.create({
@@ -29,6 +41,7 @@ async function main() {
       email: "admin@sms.local",
       passwordHash,
       role: "ADMIN",
+      schoolId: school.id,
     },
   });
 
@@ -40,7 +53,7 @@ async function main() {
       { name: "SS1A", level: "SS1", arm: "A" },
       { name: "SS2B", level: "SS2", arm: "B" },
       { name: "SS3A", level: "SS3", arm: "A" },
-    ].map((c) => prisma.schoolClass.create({ data: c }))
+    ].map((c) => prisma.schoolClass.create({ data: { ...c, schoolId: school.id } }))
   );
 
   const ss2Class = classes.find((c) => c.name === "SS2B")!;
@@ -51,6 +64,7 @@ async function main() {
       email: "teacher@sms.local",
       passwordHash,
       role: "TEACHER",
+      schoolId: school.id,
       teacher: {
         create: {
           firstName: "Jane",
@@ -58,6 +72,7 @@ async function main() {
           email: "teacher@sms.local",
           phone: "08011112222",
           department: "Sciences",
+          schoolId: school.id,
         },
       },
     },
@@ -73,29 +88,16 @@ async function main() {
     { code: `PHE${tag}`, title: "Physical Education", unit: 2, semester: 1, level },
   ];
 
-  const ssCore = (level: string, tag: string) => [
-    { code: `ENG${tag}`, title: "English Language", unit: 3, semester: 1, level },
-    { code: `MTH${tag}`, title: "Mathematics", unit: 3, semester: 1, level },
-    { code: `PHY${tag}`, title: "Physics", unit: 3, semester: 1, level },
-    { code: `CHM${tag}`, title: "Chemistry", unit: 3, semester: 1, level },
-    { code: `BIO${tag}`, title: "Biology", unit: 3, semester: 1, level },
-    { code: `CIV${tag}`, title: "Civic Education", unit: 2, semester: 1, level },
-    { code: `ECO${tag}`, title: "Economics", unit: 2, semester: 1, level },
-    { code: `ICT${tag}`, title: "Computer Studies", unit: 2, semester: 1, level },
-  ];
-
   const allSubjectRows = [
     ...jssCore("JSS1", "J1"),
     ...jssCore("JSS2", "J2"),
     ...jssCore("JSS3", "J3"),
-    ...ssCore("SS1", "S1"),
-    ...ssCore("SS2", "S2"),
-    ...ssCore("SS3", "S3"),
+    ...buildSsSubjectRows().map(({ pack: _pack, ...row }) => row),
   ];
 
   const createdSubjects = [];
   for (const row of allSubjectRows) {
-    createdSubjects.push(await prisma.subject.create({ data: row }));
+    createdSubjects.push(await prisma.subject.create({ data: { ...row, schoolId: school.id } }));
   }
 
   const ss2Subjects = createdSubjects.filter((s) => s.level === "SS2");
@@ -119,6 +121,7 @@ async function main() {
       passwordHash,
       role: "STUDENT",
       mustChangePassword: false,
+      schoolId: school.id,
       student: {
         create: {
           admissionNumber: "ADM/SS2/001",
@@ -135,6 +138,7 @@ async function main() {
           department: "Science",
           level: "SS2",
           classId: ss2Class.id,
+          schoolId: school.id,
         },
       },
     },
@@ -174,24 +178,28 @@ async function main() {
   await prisma.announcement.createMany({
     data: [
       {
+        schoolId: school.id,
         title: "Results for Second Term are now available",
         body: "Students can view graded subjects on their dashboard. Subjects without scores still show Awaiting Result.",
         audience: "ALL",
         createdById: admin.id,
       },
       {
+        schoolId: school.id,
         title: "School resumes on September 15",
         body: "All students and teachers should report for the new academic session on September 15.",
         audience: "ALL",
         createdById: admin.id,
       },
       {
+        schoolId: school.id,
         title: "Exam timetable has been released",
         body: "Check the notice board and your dashboard for the SS2 exam timetable.",
         audience: "STUDENTS",
         createdById: admin.id,
       },
       {
+        schoolId: school.id,
         title: "Score entry deadline",
         body: "Teachers should complete continuous assessment and exam scores before Friday.",
         audience: "TEACHERS",
