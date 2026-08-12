@@ -7,7 +7,7 @@ import { Button, Card, ErrorText, Input, Label, Select, useToast } from "@/compo
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { SchoolClass, Student, Subject } from "@/lib/types";
-import { STREAM_OPTIONS, subjectMatchesDepartment } from "@/lib/subjectStreams";
+import { STREAM_OPTIONS, departmentForLevel, isJuniorDepartment, isSeniorLevel, subjectMatchesDepartment } from "@/lib/subjectStreams";
 
 const emptyForm = {
   firstName: "",
@@ -21,7 +21,7 @@ const emptyForm = {
   address: "",
   parentName: "",
   parentPhone: "",
-  department: "Science",
+  department: "Junior",
   classId: "",
   session: "2025/2026",
 };
@@ -35,6 +35,8 @@ export default function StudentsPage() {
   const [pages, setPages] = useState(1);
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [classesLoading, setClassesLoading] = useState(true);
+  const [classesError, setClassesError] = useState("");
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [subjectsLoading, setSubjectsLoading] = useState(false);
@@ -91,11 +93,27 @@ export default function StudentsPage() {
     }
   }
 
+  async function loadClasses() {
+    setClassesLoading(true);
+    setClassesError("");
+    try {
+      const res = await api<{ success: true; data: SchoolClass[] }>("/api/classes?limit=200");
+      const rows = Array.isArray(res.data) ? res.data : [];
+      setClasses(rows);
+      if (rows.length === 0) {
+        setClassesError("No classes found for this school. Create classes under Classes first.");
+      }
+    } catch (err) {
+      setClasses([]);
+      setClassesError(formatApiError(err, "Failed to load classes"));
+    } finally {
+      setClassesLoading(false);
+    }
+  }
+
   useEffect(() => {
     void load();
-    api<{ success: true; data: SchoolClass[] }>("/api/classes?limit=100")
-      .then((res) => setClasses(res.data))
-      .catch(() => undefined);
+    void loadClasses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -109,7 +127,8 @@ export default function StudentsPage() {
     }
 
     const level = selectedClass.level;
-    const isSenior = /^SS/i.test(level);
+    const senior = isSeniorLevel(level);
+    const filterByStream = senior && !isJuniorDepartment(form.department);
     let cancelled = false;
     setSubjectsLoading(true);
     setSubjects([]);
@@ -120,14 +139,16 @@ export default function StudentsPage() {
       .then((res) => {
         if (cancelled) return;
         let rows = Array.isArray(res.data) ? res.data : [];
-        if (isSenior) {
+        if (filterByStream) {
           rows = rows.filter((s) => subjectMatchesDepartment(s.code, form.department));
         }
         setSubjects(rows);
         setSelectedSubjects(rows.slice(0, Math.min(6, rows.length)).map((s) => s.id));
         if (rows.length === 0) {
           setError(
-            `No subjects found for ${level}${isSenior ? ` / ${form.department}` : ""}. Add subjects under Subjects (use Add Arts & Commercial packs for senior streams).`
+            senior
+              ? `No subjects found for ${level} / ${form.department}. Open Subjects and use “Add Arts & Commercial packs”.`
+              : `No subjects found for ${level}. Add junior subjects under Subjects first.`
           );
         }
       })
@@ -144,6 +165,15 @@ export default function StudentsPage() {
       cancelled = true;
     };
   }, [selectedClass?.id, selectedClass?.level, form.department]);
+
+  function pickClass(classId: string) {
+    const chosen = classes.find((c) => c.id === classId);
+    setForm({
+      ...form,
+      classId,
+      department: chosen ? departmentForLevel(chosen.level) : form.department,
+    });
+  }
 
   function toggleSubject(id: string) {
     setSelectedSubjects((prev) =>
@@ -302,12 +332,13 @@ export default function StudentsPage() {
               >
                 {STREAM_OPTIONS.map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {s === "Junior" ? "Junior (all subjects — JSS)" : s}
                   </option>
                 ))}
               </Select>
               <p className="mt-1 text-xs text-muted">
-                Senior subjects filter to this stream (Arts / Commercial / Science).
+                Use <strong>Junior</strong> for JSS (all subjects). Use Science / Arts / Commercial for
+                SS streams.
               </p>
             </div>
             <div>
@@ -331,11 +362,39 @@ export default function StudentsPage() {
               />
             </div>
             <div className="md:col-span-2">
-              <Label>Class</Label>
-              {classes.length === 0 ? (
-                <p className="text-sm text-muted">No classes yet. Create classes first.</p>
-              ) : (
-                <div className="mt-1 flex flex-wrap gap-2" role="listbox" aria-label="Select class">
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                <Label>Class</Label>
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-brand"
+                  onClick={() => void loadClasses()}
+                  disabled={classesLoading}
+                >
+                  {classesLoading ? "Loading…" : "Reload classes"}
+                </button>
+              </div>
+              {classesError ? <p className="mb-2 text-sm text-danger">{classesError}</p> : null}
+              <Select
+                value={form.classId}
+                onChange={(e) => pickClass(e.target.value)}
+                required
+                disabled={classesLoading || classes.length === 0}
+              >
+                <option value="">
+                  {classesLoading
+                    ? "Loading classes…"
+                    : classes.length === 0
+                      ? "No classes available"
+                      : "Select class"}
+                </option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.level})
+                  </option>
+                ))}
+              </Select>
+              {classes.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2" role="listbox" aria-label="Quick pick class">
                   {classes.map((c) => {
                     const active = form.classId === c.id;
                     return (
@@ -344,7 +403,7 @@ export default function StudentsPage() {
                         type="button"
                         role="option"
                         aria-selected={active}
-                        onClick={() => setForm({ ...form, classId: c.id })}
+                        onClick={() => pickClass(c.id)}
                         className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
                           active
                             ? "border-brand bg-brand text-white"
@@ -357,17 +416,23 @@ export default function StudentsPage() {
                     );
                   })}
                 </div>
-              )}
-              {!form.classId ? (
-                <p className="mt-2 text-sm text-muted">Tap a class to load matching subjects.</p>
+              ) : null}
+              {!form.classId && !classesLoading && classes.length > 0 ? (
+                <p className="mt-2 text-sm text-muted">
+                  Choose a class above to load matching subjects.
+                </p>
               ) : null}
             </div>
             <div className="md:col-span-2">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <Label>
                   Subjects for {selectedClass?.level ?? "class"}
-                  {selectedClass && /^SS/i.test(selectedClass.level)
-                    ? ` · ${form.department}`
+                  {selectedClass
+                    ? isSeniorLevel(selectedClass.level) && !isJuniorDepartment(form.department)
+                      ? ` · ${form.department}`
+                      : isJuniorDepartment(form.department) || !isSeniorLevel(selectedClass.level)
+                        ? " · all subjects"
+                        : ""
                     : ""}{" "}
                   ({selectedSubjects.length}/5–11 selected)
                 </Label>
@@ -411,8 +476,10 @@ export default function StudentsPage() {
                   {subjects.length === 0 ? (
                     <p className="text-sm text-muted">
                       No subjects for {selectedClass.level}
-                      {/^SS/i.test(selectedClass.level) ? ` / ${form.department}` : ""}. Open
-                      Subjects and use “Add Arts & Commercial packs”.
+                      {isSeniorLevel(selectedClass.level) && !isJuniorDepartment(form.department)
+                        ? ` / ${form.department}`
+                        : ""}
+                      . Add them under Subjects first.
                     </p>
                   ) : null}
                 </div>
