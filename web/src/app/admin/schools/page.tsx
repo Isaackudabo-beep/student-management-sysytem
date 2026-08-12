@@ -203,6 +203,11 @@ export default function AdminSchoolsPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Link href={`/admin/schools/${s.id}`}>
+                <Button type="button" className="bg-[#7ec8c8] text-[#0b1c24]">
+                  Edit info
+                </Button>
+              </Link>
+              <Link href={`/admin/schools/${s.id}`}>
                 <Button type="button" variant="secondary">
                   View
                 </Button>
