@@ -30,6 +30,7 @@ const MIGRATIONS_TO_MARK_AFTER_ENSURE = [
   "20260807180000_ensure_schema_idempotent",
   "20260811120000_multi_school_tenancy",
   "20260812180000_user_email_per_school",
+  "20260904120000_score_workflow_comments",
 ];
 
 function run(command, args, { shell = false, allowFail = false, env = process.env } = {}) {

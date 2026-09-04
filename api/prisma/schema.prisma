@@ -50,6 +50,15 @@ enum SchoolStatus {
   SUSPENDED
 }
 
+/// Score workflow: teacher submits → admin reviews → approves → publishes to students.
+enum ScoreStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PUBLISHED
+  RETURNED
+}
+
 /// Platform tenant — each school is an isolated workspace.
 model School {
   id          String       @id @default(cuid())
@@ -140,6 +149,7 @@ model Student {
   updatedAt        DateTime       @updatedAt
   enrollments      Enrollment[]
   archivedResults  ResultArchive[]
+  termComments     TermReportComment[]
 
   @@unique([schoolId, admissionNumber])
   @@unique([schoolId, matricNumber])
@@ -221,20 +231,46 @@ model Enrollment {
 }
 
 model Score {
-  id           String     @id @default(cuid())
-  enrollmentId String     @unique
+  id           String      @id @default(cuid())
+  enrollmentId String      @unique
   teacherId    String
   assessment   Float
   exam         Float
   total        Float
   grade        String
+  /// Auto Pass/Fail from grade bands — not a free-text comment.
   remark       String
-  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
-  teacher      Teacher    @relation(fields: [teacherId], references: [id], onDelete: Restrict)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  status       ScoreStatus @default(SUBMITTED)
+  returnNote   String?
+  submittedAt  DateTime?
+  approvedAt   DateTime?
+  publishedAt  DateTime?
+  enrollment   Enrollment  @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  teacher      Teacher     @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   @@index([teacherId])
+  @@index([status])
+}
+
+/// Teacher / principal comments on a student's report for a session + term.
+model TermReportComment {
+  id                String   @id @default(cuid())
+  schoolId          String
+  studentId         String
+  student           Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  session           String
+  term              Term
+  teacherComment    String?
+  principalComment  String?
+  updatedById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([studentId, session, term])
+  @@index([schoolId])
+  @@index([session, term])
 }
 
 /// Snapshot of scores cleared when a term is closed (students/teachers/classes kept).

@@ -21,6 +21,10 @@ const NAV: Array<{ href: string; label: string; roles: Role[] }> = [
   { href: "/enrollments", label: "Enrollments", roles: ["ADMIN"] },
   { href: "/term", label: "Session", roles: ["ADMIN"] },
   { href: "/scores", label: "Scores", roles: ["ADMIN", "TEACHER"] },
+  { href: "/results-review", label: "Results", roles: ["ADMIN", "TEACHER"] },
+  { href: "/broadsheet", label: "Broadsheet", roles: ["ADMIN"] },
+  { href: "/report-card", label: "Report card", roles: ["ADMIN", "TEACHER"] },
+  { href: "/promotion", label: "Promotion", roles: ["ADMIN"] },
   { href: "/announcements", label: "Announcements", roles: ["ADMIN"] },
   { href: "/results", label: "My Results", roles: ["STUDENT"] },
 ];

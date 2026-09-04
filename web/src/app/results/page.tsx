@@ -19,6 +19,7 @@ type ResultRow = {
     remark: string;
   } | null;
   resultStatusLabel?: string;
+  workflowStatus?: string | null;
 };
 
 type ResultsPayload = {
@@ -247,8 +248,9 @@ export default function ResultsPage() {
             </div>
             {savedNote ? <p className="mt-3 text-sm text-success">{savedNote}</p> : null}
             <p className="mt-2 text-sm text-muted">
-              Save on device downloads your result slip as a file you can keep offline. Print / Save
-              as PDF opens the browser print dialog.
+              Only <strong>published</strong> results show numbers here. Subjects still in review
+              appear as Awaiting until an admin publishes them. Save on device downloads your slip
+              offline; Print / Save as PDF opens the browser print dialog.
             </p>
           </Card>
 

@@ -105,6 +105,43 @@ export function IconResults(p: IconProps) {
   );
 }
 
+export function IconResultsReview(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M8 4h8l3 3v13H5V4h3Z" strokeLinejoin="round" />
+      <path d="M9 14l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+export function IconBroadsheet(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 5h16v14H4z" strokeLinejoin="round" />
+      <path d="M4 9h16M9 5v14M14 5v14" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+export function IconReportCard(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M7 3h10v18H7z" strokeLinejoin="round" />
+      <path d="M10 8h4M10 12h4M10 16h3" strokeLinecap="round" />
+      <path d="M16 7l2 1v2" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+export function IconPromotion(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 19V5M12 5l-4 4M12 5l4 4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 19h14" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 export function IconSchools(p: IconProps) {
   return (
     <Svg {...p}>
@@ -150,6 +187,10 @@ export const NAV_ICONS: Record<string, (p: IconProps) => ReactNode> = {
   Enrollments: IconEnrollments,
   Session: IconSession,
   Scores: IconScores,
+  Results: IconResultsReview,
+  Broadsheet: IconBroadsheet,
+  "Report card": IconReportCard,
+  Promotion: IconPromotion,
   Announcements: IconAnnouncements,
   "My Results": IconResults,
   Schools: IconSchools,

@@ -2,7 +2,6 @@
 import { AppError, assertFound } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { assertSchoolMatch, requireSchoolId } from "../lib/schoolScope.js";
-import { calculateGrade } from "../utils/grades.js";
 import { enrollmentBaseSelect, enrollmentSelectWithTerm, isSchemaMismatch, studentBaseSelect, studentSelectWithStatus, withAcademicStatus, withTerm, } from "../lib/safeSelects.js";
 async function assertTeacherCanScore(teacherId, subjectId, session) {
     const assignment = await prisma.teacherSubject.findFirst({
@@ -13,73 +12,8 @@ async function assertTeacherCanScore(teacherId, subjectId, session) {
     }
 }
 export async function upsertScore(input, actor) {
-    requireSchoolId(actor);
-    if (actor.role !== "TEACHER" || !actor.teacherId) {
-        throw new AppError(403, "Only teachers can enter scores");
-    }
-    const enrollment = assertFound(await prisma.enrollment.findUnique({
-        where: { id: input.enrollmentId },
-        include: { score: true, subject: true, student: true },
-    }), "Enrollment not found");
-    assertSchoolMatch(actor, enrollment.student.schoolId, "Enrollment");
-    await assertTeacherCanScore(actor.teacherId, enrollment.subjectId, enrollment.session);
-    let gradeResult;
-    try {
-        gradeResult = calculateGrade(input.assessment, input.exam);
-    }
-    catch (e) {
-        throw new AppError(400, e instanceof Error ? e.message : "Invalid score");
-    }
-    const data = {
-        teacherId: actor.teacherId,
-        assessment: input.assessment,
-        exam: input.exam,
-        total: gradeResult.total,
-        grade: gradeResult.grade,
-        remark: gradeResult.remark,
-    };
-    if (enrollment.score) {
-        return prisma.score.update({
-            where: { id: enrollment.score.id },
-            data,
-            include: {
-                enrollment: { include: { student: { include: { user: true } }, subject: true } },
-                teacher: true,
-            },
-        }).then(async (score) => {
-            await notifyScoreSaved(score, actor.id);
-            return score;
-        });
-    }
-    return prisma.score.create({
-        data: {
-            enrollmentId: input.enrollmentId,
-            ...data,
-        },
-        include: {
-            enrollment: { include: { student: { include: { user: true } }, subject: true } },
-            teacher: true,
-        },
-    }).then(async (score) => {
-        await notifyScoreSaved(score, actor.id);
-        return score;
-    });
-}
-async function notifyScoreSaved(score, actorId) {
-    try {
-        const { createSystemAnnouncement } = await import("./announcement.service.js");
-        await createSystemAnnouncement({
-            schoolId: score.enrollment.student.schoolId,
-            title: `Result published — ${score.enrollment.subject.code}`,
-            body: `Your score in ${score.enrollment.subject.title} (${score.enrollment.session}, ${score.enrollment.term ?? "FIRST"}) is ${score.total} (${score.grade}).`,
-            audience: "USER",
-            createdById: actorId,
-            targetUserId: score.enrollment.student.userId,
-        });
-    }
-    catch {
-        // Non-blocking notification
-    }
+    const { upsertScoreWithWorkflow } = await import("./resultWorkflow.service.js");
+    return upsertScoreWithWorkflow(input, actor);
 }
 export async function listScores(params) {
     const { actor } = params;
@@ -119,9 +53,12 @@ export async function listScores(params) {
         };
         return base;
     }
-    async function fetch(includeTerm, enrollmentSelect, studentSelect) {
+    async function fetch(includeTerm, enrollmentSelect, studentSelect, includeWorkflowFields) {
         const enrollmentFilter = buildEnrollmentFilter(includeTerm);
-        const where = { enrollment: enrollmentFilter };
+        const where = {
+            enrollment: enrollmentFilter,
+            ...(actor.role === "STUDENT" && includeWorkflowFields ? { status: "PUBLISHED" } : {}),
+        };
         const [total, rows] = await Promise.all([
             prisma.score.count({ where }),
             prisma.score.findMany({
@@ -138,6 +75,15 @@ export async function listScores(params) {
                     total: true,
                     grade: true,
                     remark: true,
+                    ...(includeWorkflowFields
+                        ? {
+                            status: true,
+                            returnNote: true,
+                            submittedAt: true,
+                            approvedAt: true,
+                            publishedAt: true,
+                        }
+                        : {}),
                     createdAt: true,
                     updatedAt: true,
                     teacher: true,
@@ -151,7 +97,7 @@ export async function listScores(params) {
                 },
             }),
         ]);
-        const data = rows.map((row) => ({
+        const mapped = rows.map((row) => ({
             ...row,
             enrollment: withTerm({
                 ...row.enrollment,
@@ -159,17 +105,24 @@ export async function listScores(params) {
             }),
         }));
         return {
-            data,
+            data: mapped,
             meta: { total, page: params.page, limit: params.limit, pages: Math.ceil(total / params.limit) || 1 },
         };
     }
     try {
-        return await fetch(true, enrollmentSelectWithTerm, studentSelectWithStatus);
+        return await fetch(true, enrollmentSelectWithTerm, studentSelectWithStatus, true);
     }
     catch (err) {
         if (!isSchemaMismatch(err))
             throw err;
-        return fetch(false, enrollmentBaseSelect, studentBaseSelect);
+        try {
+            return await fetch(true, enrollmentSelectWithTerm, studentSelectWithStatus, false);
+        }
+        catch (err2) {
+            if (!isSchemaMismatch(err2))
+                throw err2;
+            return fetch(false, enrollmentBaseSelect, studentBaseSelect, false);
+        }
     }
 }
 export async function getStudentResults(studentId, actor) {
@@ -234,9 +187,25 @@ export async function getStudentResults(studentId, actor) {
     catch {
         archived = [];
     }
-    const scored = enrollments.filter((e) => e.score);
-    const average = scored.length > 0
-        ? Number((scored.reduce((sum, e) => sum + (e.score?.total ?? 0), 0) / scored.length).toFixed(2))
+    const isStudent = actor.role === "STUDENT";
+    const scored = enrollments.filter((e) => {
+        if (!e.score)
+            return false;
+        if (isStudent)
+            return e.score.status === "PUBLISHED" || !e.score.status;
+        return true;
+    });
+    // After migration, students only count published; before status column exists, status is undefined → show (legacy)
+    const visibleScored = enrollments.filter((e) => {
+        if (!e.score)
+            return false;
+        if (!isStudent)
+            return true;
+        const status = e.score.status;
+        return !status || status === "PUBLISHED";
+    });
+    const average = visibleScored.length > 0
+        ? Number((visibleScored.reduce((sum, e) => sum + (e.score?.total ?? 0), 0) / visibleScored.length).toFixed(2))
         : null;
     const sessions = [...new Set([...enrollments.map((e) => e.session), ...archived.map((a) => a.session)])];
     const classDisplay = student.academicStatus === "REPEATING"
@@ -269,19 +238,45 @@ export async function getStudentResults(studentId, actor) {
         sessions,
         enrollments: enrollments.map((e) => {
             const row = withTerm(e);
+            const status = e.score?.status;
+            const hiddenFromStudent = isStudent && e.score && status && status !== "PUBLISHED";
+            if (hiddenFromStudent) {
+                return {
+                    ...row,
+                    score: null,
+                    resultStatus: "AWAITING_RESULT",
+                    resultStatusLabel: "Awaiting Result",
+                    caScore: null,
+                    examScore: null,
+                    workflowStatus: status,
+                };
+            }
             return {
                 ...row,
-                resultStatus: e.score ? "GRADED" : "AWAITING_RESULT",
-                resultStatusLabel: e.score ? "Graded" : "Awaiting Result",
+                resultStatus: e.score ? (status === "PUBLISHED" || !status ? "GRADED" : status) : "AWAITING_RESULT",
+                resultStatusLabel: e.score
+                    ? !status || status === "PUBLISHED"
+                        ? "Graded"
+                        : status === "SUBMITTED"
+                            ? "Submitted"
+                            : status === "APPROVED"
+                                ? "Approved"
+                                : status === "RETURNED"
+                                    ? "Returned"
+                                    : status === "DRAFT"
+                                        ? "Draft"
+                                        : "Graded"
+                    : "Awaiting Result",
                 caScore: e.score?.assessment ?? null,
                 examScore: e.score?.exam ?? null,
+                workflowStatus: status ?? null,
             };
         }),
         archivedResults: archived,
         summary: {
             enrolled: enrollments.length,
-            graded: scored.length,
-            awaiting: enrollments.length - scored.length,
+            graded: visibleScored.length,
+            awaiting: enrollments.length - visibleScored.length,
             average,
         },
     };
@@ -296,6 +291,9 @@ export async function deleteScore(id, actor) {
     if (actor.role === "TEACHER") {
         if (!actor.teacherId || score.teacherId !== actor.teacherId) {
             throw new AppError(403, "You can only delete scores you entered");
+        }
+        if (score.status === "APPROVED" || score.status === "PUBLISHED") {
+            throw new AppError(400, "Approved/published scores cannot be deleted. Ask an admin to return them first.");
         }
         await assertTeacherCanScore(actor.teacherId, score.enrollment.subjectId, score.enrollment.session);
     }

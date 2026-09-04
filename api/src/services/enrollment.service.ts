@@ -189,14 +189,33 @@ export async function listEnrollments(
     ]);
 
     const data = rows.map((e) => {
+      const status = (e.score as { status?: string } | null)?.status;
       const row = withTerm({
         ...e,
         student: withAcademicStatus(e.student),
       });
       return {
         ...row,
-        resultStatus: e.score ? "GRADED" : "AWAITING_RESULT",
-        resultStatusLabel: e.score ? "Graded" : "Awaiting Result",
+        resultStatus: e.score
+          ? status === "PUBLISHED" || !status
+            ? "GRADED"
+            : status
+          : "AWAITING_RESULT",
+        resultStatusLabel: e.score
+          ? !status || status === "PUBLISHED"
+            ? "Graded"
+            : status === "SUBMITTED"
+              ? "Submitted"
+              : status === "APPROVED"
+                ? "Approved"
+                : status === "RETURNED"
+                  ? "Returned"
+                  : status === "DRAFT"
+                    ? "Draft"
+                    : "Graded"
+          : "Awaiting Result",
+        workflowStatus: status ?? null,
+        returnNote: (e.score as { returnNote?: string | null } | null)?.returnNote ?? null,
       };
     });
 

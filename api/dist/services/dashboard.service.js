@@ -14,14 +14,46 @@ export async function getDashboardStats(actor) {
     }
     const unreadNotifications = notifications.filter((n) => !n.read).length;
     if (actor.role === "ADMIN") {
-        const [students, teachers, subjects, classes, enrollments, scores] = await Promise.all([
+        const [students, teachers, subjects, classes, enrollments, scores, promoted, repeating] = await Promise.all([
             prisma.student.count({ where: { schoolId } }),
             prisma.teacher.count({ where: { schoolId } }),
             prisma.subject.count({ where: { schoolId } }),
             prisma.schoolClass.count({ where: { schoolId } }),
             prisma.enrollment.count({ where: { student: { schoolId } } }),
             prisma.score.count({ where: { enrollment: { student: { schoolId } } } }),
+            prisma.student.count({ where: { schoolId, academicStatus: "PROMOTED" } }),
+            prisma.student.count({ where: { schoolId, academicStatus: "REPEATING" } }),
         ]);
+        let resultsPending = 0;
+        let resultsApproved = 0;
+        let resultsPublished = 0;
+        let resultsReturned = 0;
+        try {
+            const [pending, approved, published, returned] = await Promise.all([
+                prisma.score.count({
+                    where: {
+                        enrollment: { student: { schoolId } },
+                        status: { in: ["SUBMITTED", "DRAFT"] },
+                    },
+                }),
+                prisma.score.count({
+                    where: { enrollment: { student: { schoolId } }, status: "APPROVED" },
+                }),
+                prisma.score.count({
+                    where: { enrollment: { student: { schoolId } }, status: "PUBLISHED" },
+                }),
+                prisma.score.count({
+                    where: { enrollment: { student: { schoolId } }, status: "RETURNED" },
+                }),
+            ]);
+            resultsPending = pending;
+            resultsApproved = approved;
+            resultsPublished = published;
+            resultsReturned = returned;
+        }
+        catch {
+            /* status column may not exist yet */
+        }
         const allScores = await prisma.score.findMany({
             where: { enrollment: { student: { schoolId } } },
             select: {
@@ -105,7 +137,21 @@ export async function getDashboardStats(actor) {
         });
         return {
             role: actor.role,
-            counts: { students, teachers, subjects, classes, enrollments, scores, unreadNotifications },
+            counts: {
+                students,
+                teachers,
+                subjects,
+                classes,
+                enrollments,
+                scores,
+                unreadNotifications,
+                resultsPending,
+                resultsApproved,
+                resultsPublished,
+                resultsReturned,
+                studentsPromoted: promoted,
+                studentsRepeating: repeating,
+            },
             charts: {
                 overallPassRate,
                 passRateByClass,
@@ -136,12 +182,12 @@ export async function getDashboardStats(actor) {
                 .sort((a, b) => +new Date(b.at) - +new Date(a.at))
                 .slice(0, 8),
             quickActions: [
-                { label: "Register student", href: "/students" },
+                { label: "Enter / review scores", href: "/scores" },
+                { label: "Approve results", href: "/results-review" },
+                { label: "Broadsheet", href: "/broadsheet" },
+                { label: "Promotion", href: "/promotion" },
                 { label: "Close term", href: "/term" },
-                { label: "Promote students", href: "/term" },
-                { label: "Manage classes", href: "/classes" },
-                { label: "Send notification", href: "/announcements" },
-                { label: "Manage teachers", href: "/teachers" },
+                { label: "Register student", href: "/students" },
             ],
             notifications: notifications.slice(0, 5),
         };
@@ -270,6 +316,7 @@ export async function getDashboardStats(actor) {
                             total: true,
                             grade: true,
                             remark: true,
+                            status: true,
                         },
                     },
                 },
@@ -296,9 +343,17 @@ export async function getDashboardStats(actor) {
                 orderBy: { createdAt: "asc" },
             });
         }
-        const graded = enrollments.filter((e) => e.score);
+        const visibleScore = (e) => {
+            if (!e.score)
+                return null;
+            const status = e.score.status;
+            if (status && status !== "PUBLISHED")
+                return null;
+            return e.score;
+        };
+        const graded = enrollments.filter((e) => visibleScore(e));
         const average = graded.length > 0
-            ? Number((graded.reduce((s, e) => s + (e.score?.total ?? 0), 0) / graded.length).toFixed(2))
+            ? Number((graded.reduce((s, e) => s + (visibleScore(e)?.total ?? 0), 0) / graded.length).toFixed(2))
             : null;
         const classDisplay = student?.academicStatus === "REPEATING"
             ? `Repeated · ${student.schoolClass?.name}`
@@ -332,20 +387,23 @@ export async function getDashboardStats(actor) {
                 average,
                 unreadNotifications,
             },
-            subjects: enrollments.map((e) => ({
-                enrollmentId: e.id,
-                code: e.subject.code,
-                title: e.subject.title,
-                session: e.session,
-                term: e.term ?? "FIRST",
-                resultStatus: e.score ? "GRADED" : "AWAITING_RESULT",
-                resultStatusLabel: e.score ? "Graded" : "Awaiting Result",
-                assessment: e.score?.assessment ?? null,
-                exam: e.score?.exam ?? null,
-                total: e.score?.total ?? null,
-                grade: e.score?.grade ?? null,
-                remark: e.score?.remark ?? null,
-            })),
+            subjects: enrollments.map((e) => {
+                const score = visibleScore(e);
+                return {
+                    enrollmentId: e.id,
+                    code: e.subject.code,
+                    title: e.subject.title,
+                    session: e.session,
+                    term: e.term ?? "FIRST",
+                    resultStatus: score ? "GRADED" : "AWAITING_RESULT",
+                    resultStatusLabel: score ? "Graded" : "Awaiting Result",
+                    assessment: score?.assessment ?? null,
+                    exam: score?.exam ?? null,
+                    total: score?.total ?? null,
+                    grade: score?.grade ?? null,
+                    remark: score?.remark ?? null,
+                };
+            }),
             academicSummary: {
                 average,
                 graded: graded.length,

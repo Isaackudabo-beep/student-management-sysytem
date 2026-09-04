@@ -3,6 +3,14 @@ export type Role = "SUPER_ADMIN" | "ADMIN" | "TEACHER" | "STUDENT";
 export type Term = "FIRST" | "SECOND" | "THIRD";
 export type AcademicStatus = "ACTIVE" | "PROMOTED" | "REPEATING";
 export type SchoolStatus = "ACTIVE" | "SUSPENDED";
+export type ScoreStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "PUBLISHED" | "RETURNED";
+export type SheetStatus =
+  | "PENDING"
+  | "INCOMPLETE"
+  | "REVIEW"
+  | "APPROVED"
+  | "PUBLISHED"
+  | "RETURNED";
 
 export type AuthUser = {
   id: string;
@@ -138,6 +146,8 @@ export type Score = {
   total: number;
   grade: string;
   remark: string;
+  status?: ScoreStatus;
+  returnNote?: string | null;
   enrollment?: Enrollment;
   teacher?: Teacher;
 };

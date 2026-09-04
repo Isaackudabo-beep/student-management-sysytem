@@ -79,6 +79,26 @@ export default function AdminDashboardPage() {
             ))}
           </div>
 
+          {(data.counts.resultsPending != null ||
+            data.counts.resultsApproved != null ||
+            data.counts.resultsPublished != null ||
+            data.counts.studentsPromoted != null ||
+            data.counts.studentsRepeating != null) && (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+              {[
+                ["resultsPending", "Results pending"],
+                ["resultsApproved", "Results approved"],
+                ["resultsPublished", "Results published"],
+                ["studentsPromoted", "Students promoted"],
+                ["studentsRepeating", "Students repeating"],
+              ].map(([key, label]) =>
+                data.counts[key] != null ? (
+                  <Stat key={key} label={label} value={data.counts[key] as number} />
+                ) : null
+              )}
+            </div>
+          )}
+
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <Card>
               <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
